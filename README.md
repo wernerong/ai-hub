@@ -4,7 +4,8 @@
 
 A Windows desktop workspace for your installed OpenAI, Grok and Grok Bot apps.
 Switch between the three panels, keep existing accounts and conversations, and
-adjust each app's content zoom from Settings. OpenAI's own controls switch
+adjust each app's content zoom from Settings. The compact bottom strip monitors
+Codex, Grok CLI / Build and Grok Bot allowances. OpenAI's own controls switch
 between ChatGPT, Codex and Dot.
 
 ## Run
@@ -30,6 +31,32 @@ Pass `-OutputDirectory` to choose another destination. Package staging folders
 must be new so stale files cannot enter a release.
 
 ## Behavior and limits
+
+Version 0.2.1 fixes OpenAI extending over the bottom usage strip when its
+standalone minimum window size exceeds the workspace. Constrained windows
+resize to fit the panel; popping them out restores their normal sizing rules.
+
+Version 0.2.0 adds an integrated Usage page. Click any bottom indicator or
+**Usage** in the rail for all reported windows, reset countdowns, credits and
+connection errors. Each indicator shows the most constrained reported window.
+Readings refresh independently every minute; errors retain the last successful
+reading and mark it stale. Missing values remain unavailable.
+
+**Settings** controls provider monitoring, optional low-allowance and confirmed
+reset notifications, the low-allowance threshold, Windows startup, and app zoom.
+Notifications default off and deduplicate across restarts. Reset notifications
+require a fresh reading with a newer reset window and reduced usage, not just
+the passage of a countdown deadline.
+
+Codex usage applies to Codex, not ChatGPT or Dot. Grok usage is CLI / Build
+allowance, not Grok web chat. Existing provider logins remain with their apps;
+AI Hub reads them in memory to request usage and does not save tokens. Usage
+settings and alert identifiers live in `%LOCALAPPDATA%\AIHub\usage-settings.json`.
+
+The monitoring code is a separate UI-independent .NET project in `Usage/`,
+adapted from AI Usage Widget. The standalone widget remains independently
+installed; close it when using AI Hub for monitoring to avoid duplicate reads.
+This update does not alter its settings or startup behavior.
 
 The hub aligns independent native windows over its content area and hides
 inactive apps. A separate helper restores original styles and positions after

@@ -1,3 +1,5 @@
+using AIHub.Usage;
+
 namespace AIHub;
 
 internal sealed class HubForm : Form
@@ -11,7 +13,19 @@ internal sealed class HubForm : Form
     private readonly Label heading = new() { AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Ink };
     private readonly Label status = new() { Dock = DockStyle.Bottom, Height = 36, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(22, 0, 0, 0), ForeColor = Muted };
     private readonly Dictionary<string, Button> navigation = [];
-    private readonly Button detach, restore, settingsButton;
+    private readonly ToolTip navigationHints = new() { InitialDelay = 350, ReshowDelay = 100, AutoPopDelay = 8000 };
+    private readonly Button detach, restore, settingsButton, usageButton;
+    private readonly UsageReaders usageReaders = new();
+    private readonly UsageMonitor usage;
+    private UsagePreferences usagePreferences;
+    private readonly string usagePreferencesPath;
+    private readonly UsageAlerts usageAlerts;
+    private readonly UsageStrip usageStrip;
+    private readonly System.Windows.Forms.Timer usageTimer = new() { Interval = 1000 };
+    private readonly NotifyIcon usageNotifications;
+    private readonly Queue<UsageAlert> pendingAlerts = new();
+    private DateTimeOffset nextUsageRefresh, nextAlert;
+    private UsagePage? usagePage;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 150 };
     private string? selected;
     private bool busy;
@@ -19,12 +33,22 @@ internal sealed class HubForm : Form
     private bool minimized;
     private bool presentationQueued;
     private bool focusPresentation;
-    private bool settingsOpen;
+    private enum HubPage { Workspace, Settings, Usage }
+    private HubPage page;
+    private bool pageOpen => page != HubPage.Workspace;
 
     internal HubForm(string statePath)
     {
         dock = new DockManager(statePath);
         zoom = new ZoomSettings(Path.Combine(Path.GetDirectoryName(statePath)!, "zoom-settings.json"));
+        usagePreferencesPath = Path.Combine(Path.GetDirectoryName(statePath)!, "usage-settings.json");
+        usagePreferences = UsagePreferences.Load(usagePreferencesPath);
+        usage = new UsageMonitor(usageReaders.Providers, usagePreferences.IsEnabled);
+        usageAlerts = new UsageAlerts(usagePreferences.SentAlerts);
+        usageStrip = new UsageStrip(usageReaders.Providers, ShowUsage);
+        usageNotifications = new NotifyIcon { Icon = AppInfo.LoadIcon(), Text = "AI Hub usage alerts", Visible = usagePreferences.LowAlerts || usagePreferences.ResetAlerts };
+        usageNotifications.BalloonTipClicked += (_, _) => { WindowState = FormWindowState.Normal; Activate(); ShowUsage(); };
+        usageNotifications.DoubleClick += (_, _) => { WindowState = FormWindowState.Normal; Activate(); ShowUsage(); };
         AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.Dpi;
         Text = AppInfo.DisplayName;
@@ -37,34 +61,37 @@ internal sealed class HubForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
 
-        var sidebar = new Panel { Dock = DockStyle.Left, Width = 224, BackColor = Surface, Padding = new Padding(16, 26, 16, 18) };
-        var brand = new Panel { Height = 54, Dock = DockStyle.Top };
-        var emblem = new PictureBox { Image = Icon.ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(38, 38), Location = new Point(0, 4), AccessibleName = "AI Hub icon" };
+        var sidebar = new Panel { Dock = DockStyle.Left, Width = 88, BackColor = Surface, Padding = new Padding(8, 12, 8, 10) };
+        var brand = new Panel { Height = 64, Dock = DockStyle.Top };
+        var emblem = new PictureBox { Image = Icon.ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(40, 40), Location = new Point(16, 4), AccessibleName = "AI Hub icon" };
         brand.Controls.Add(emblem);
-        brand.Controls.Add(new Label { Text = "AI Hub", Font = new Font("Segoe UI Semibold", 22), Size = new Size(145, 50), Location = new Point(46, 0), ForeColor = Ink });
-        var sub = new Label { Text = $"ONE WORKSPACE  /  v{AppInfo.Version}", Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Muted, Dock = DockStyle.Top, Height = 38 };
+        navigationHints.SetToolTip(emblem, AppInfo.DisplayName);
         var choices = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
         foreach (var entry in AppEntry.All)
         {
-            var button = MakeButton(entry.Name + "\n" + entry.Description, async () => await Select(entry));
-            button.AccessibleName = "Open " + entry.Name;
-            button.Size = new Size(192, 78);
-            button.Margin = new Padding(0, 0, 0, 12);
-            button.TextAlign = ContentAlignment.MiddleLeft;
-            button.Padding = new Padding(12, 0, 0, 0);
+            var button = new ProviderButton(entry, async () => await Select(entry));
+            navigationHints.SetToolTip(button, entry.Name + "\n" + entry.Description);
             navigation[entry.Key] = button;
             choices.Controls.Add(button);
         }
-        var footer = new Label { Dock = DockStyle.Bottom, Height = 68, ForeColor = Muted, Text = "Your apps. Your accounts.\nClick a tab to bring it inside.", Font = new Font("Segoe UI", 9) };
+        var version = new Label { Dock = DockStyle.Bottom, Height = 24, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Muted, Text = $"v{AppInfo.Version}", Font = new Font("Segoe UI", 8), AccessibleName = "AI Hub version " + AppInfo.Version };
         sidebar.Controls.Add(choices);
-        sidebar.Controls.Add(sub);
         sidebar.Controls.Add(brand);
-        sidebar.Controls.Add(footer);
         settingsButton = MakeButton("Settings", ShowSettings);
+        settingsButton.Font = new Font("Segoe UI", 8.5f);
         settingsButton.AccessibleName = "Settings";
         settingsButton.Dock = DockStyle.Bottom;
         settingsButton.Height = 42;
+        navigationHints.SetToolTip(settingsButton, "Settings · App content zoom");
         sidebar.Controls.Add(settingsButton);
+        sidebar.Controls.Add(version);
+        usageButton = MakeButton("Usage", ShowUsage);
+        usageButton.Font = new Font("Segoe UI", 8.5f);
+        usageButton.AccessibleName = "Usage overview";
+        usageButton.Dock = DockStyle.Bottom;
+        usageButton.Height = 42;
+        sidebar.Controls.Add(usageButton);
+        sidebar.Controls.SetChildIndex(usageButton, sidebar.Controls.IndexOf(settingsButton));
 
         var top = new Panel { Dock = DockStyle.Top, Height = 66, Padding = new Padding(22, 12, 16, 12), BackColor = Surface };
         var actions = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 285, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
@@ -82,11 +109,32 @@ internal sealed class HubForm : Form
         viewport.Controls.Add(empty);
         main.Controls.Add(viewport);
         main.Controls.Add(status);
+        main.Controls.Add(usageStrip);
         main.Controls.Add(top);
         Controls.Add(main);
         Controls.Add(sidebar);
         heading.Text = "Welcome to your workspace";
         ShowWelcome();
+        status.Height = 28;
+        status.Visible = false;
+        status.TextChanged += (_, _) => UpdateStatusVisibility();
+        usage.Changed += UsageChanged;
+        usageTimer.Tick += (_, _) =>
+        {
+            if (closing) return;
+            UpdateUsage();
+            if (DateTimeOffset.Now >= nextUsageRefresh)
+            {
+                nextUsageRefresh = DateTimeOffset.Now.AddSeconds(5);
+                _ = usage.RefreshAsync();
+            }
+            if (pendingAlerts.Count > 0 && DateTimeOffset.Now >= nextAlert)
+            {
+                var alert = pendingAlerts.Dequeue();
+                usageNotifications.ShowBalloonTip(7000, alert.Title, alert.Message, ToolTipIcon.Info);
+                nextAlert = DateTimeOffset.Now.AddSeconds(10);
+            }
+        };
         viewport.Resize += (_, _) => ResizeSelected();
         LocationChanged += (_, _) => ResizeSelected();
         Activated += (_, _) => QueueSelectedPresentation();
@@ -98,6 +146,9 @@ internal sealed class HubForm : Form
             int dark = 1;
             Native.DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int));
             timer.Start();
+            usageTimer.Start();
+            nextUsageRefresh = DateTimeOffset.Now.AddSeconds(5);
+            _ = usage.RefreshAsync();
         };
         timer.Tick += (_, _) =>
         {
@@ -110,9 +161,9 @@ internal sealed class HubForm : Form
             if (minimized)
             {
                 minimized = false;
-                if (selected is not null && !settingsOpen) dock.Select(selected, viewport.Handle);
+                if (selected is not null && !pageOpen) dock.Select(selected, viewport.Handle);
             }
-            if (selected is not null && !busy && !settingsOpen && !dock.Has(selected))
+            if (selected is not null && !busy && !pageOpen && !dock.Has(selected))
             {
                 selected = null;
                 detach.Enabled = false;
@@ -128,7 +179,13 @@ internal sealed class HubForm : Form
             try { dock.RestoreAll(); }
             catch (Exception ex) { closing = false; timer.Start(); e.Cancel = true; MessageBox.Show("An app could not be restored yet. Keep the hub open and try Restore all again.\n\n" + ex.Message, "AI Hub"); }
         };
-        FormClosed += (_, _) => { dock.Dispose(); timer.Dispose(); emblem.Image?.Dispose(); Icon?.Dispose(); };
+        FormClosed += (_, _) =>
+        {
+            usageTimer.Stop(); usage.Changed -= UsageChanged; usage.Dispose(); usageTimer.Dispose();
+            usageReaders.Dispose(); usageNotifications.Visible = false;
+            usageNotifications.Icon?.Dispose(); usageNotifications.Dispose();
+            dock.Dispose(); timer.Dispose(); navigationHints.Dispose(); emblem.Image?.Dispose(); Icon?.Dispose();
+        };
         // These controls are created in code, so the design DPI is supplied after
         // all children exist, not before Font changes trigger automatic layout.
         AutoScaleDimensions = new SizeF(96, 96);
@@ -146,7 +203,8 @@ internal sealed class HubForm : Form
 
     private void ShowWelcome(string? message = null)
     {
-        settingsOpen = false;
+        page = HubPage.Workspace;
+        heading.Text = "Welcome to your workspace";
         ClearContent();
         empty.Padding = new Padding(IsHandleCreated ? (int)Math.Round(50f * DeviceDpi / 96f) : 50);
         var content = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
@@ -171,13 +229,14 @@ internal sealed class HubForm : Form
 
     private void ClearContent()
     {
+        usagePage = null;
         foreach (Control control in empty.Controls.Cast<Control>().ToArray()) control.Dispose();
     }
 
     private void ShowSettings()
     {
         if (busy || closing) return;
-        settingsOpen = true;
+        page = HubPage.Settings;
         focusPresentation = false;
         dock.HideAll();
         ClearContent();
@@ -191,9 +250,9 @@ internal sealed class HubForm : Form
         {
             appliedZoom.Remove(entry.Key);
             await Select(entry);
-        }));
+        }, usagePreferences, usageReaders.Providers, SaveUsagePreferences));
         empty.Visible = true;
-        heading.Text = "Settings   /   App content zoom";
+        heading.Text = "Settings   /   Zoom, usage and alerts";
         detach.Enabled = false;
         status.Text = "Choose a zoom level for each AI panel.";
         UpdateNavigation();
@@ -225,7 +284,7 @@ internal sealed class HubForm : Form
                 await dock.Attach(entry.Key, chosen, viewport.Handle);
             }
             selected = entry.Key;
-            settingsOpen = false;
+            page = HubPage.Workspace;
             empty.Visible = false;
             dock.Select(entry.Key, viewport.Handle);
             heading.Text = entry.Name + "   /   " + entry.Description;
@@ -236,11 +295,11 @@ internal sealed class HubForm : Form
         }
         catch (Exception ex)
         {
-            if (!settingsOpen && selected is not null && dock.Has(selected)) dock.Select(selected, viewport.Handle);
+            if (!pageOpen && selected is not null && dock.Has(selected)) dock.Select(selected, viewport.Handle);
             status.Text = $"Could not connect {entry.Name}.";
             MessageBox.Show(this, ex.Message, "AI Hub", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
-        finally { busy = false; }
+        finally { busy = false; UpdateStatusVisibility(); }
     }
 
     private WindowInfo? ChooseWindow(List<WindowInfo> windows)
@@ -260,7 +319,7 @@ internal sealed class HubForm : Form
 
     private void ResizeSelected()
     {
-        if (selected is null || settingsOpen || closing || WindowState == FormWindowState.Minimized) return;
+        if (selected is null || pageOpen || closing || WindowState == FormWindowState.Minimized) return;
         try { dock.Resize(selected, viewport.Handle, Native.GetForegroundWindow() == Handle || dock.IsForeground(selected)); }
         catch (Exception ex) { status.Text = "Resize failed: " + ex.Message; }
     }
@@ -275,7 +334,7 @@ internal sealed class HubForm : Form
             presentationQueued = false;
             bool activate = focusPresentation;
             focusPresentation = false;
-            if (closing || busy || settingsOpen || selected is null || WindowState == FormWindowState.Minimized) return;
+            if (closing || busy || pageOpen || selected is null || WindowState == FormWindowState.Minimized) return;
             // Windows finishes activating/raising the hub before its app is
             // placed above the content area. Do not steal focus from other apps.
             if (Native.GetForegroundWindow() != Handle && !dock.IsForeground(selected)) return;
@@ -299,14 +358,14 @@ internal sealed class HubForm : Form
         {
             await Task.Delay(100); // Let the app receive focus before its shortcuts.
             await ZoomController.Apply(key, percent,
-                () => !closing && !settingsOpen && selected == key && window.Matches()
+                () => !closing && !pageOpen && selected == key && window.Matches()
                     && Native.IsWindowVisible((nint)window.Handle) && dock.IsForeground(key),
                 command => Native.SendZoomChord((nint)window.Handle, command));
             appliedZoom[key] = (window, percent);
             status.Text = $"{AppEntry.All.First(a => a.Key == key).Name}  ·  Zoom {percent}%";
         }
         catch (Exception ex) { status.Text = "Zoom not applied: " + ex.Message; }
-        finally { busy = false; }
+        finally { busy = false; UpdateStatusVisibility(); }
     }
     private void PopOut()
     {
@@ -340,10 +399,82 @@ internal sealed class HubForm : Form
     {
         foreach (var (key, button) in navigation)
         {
-            button.BackColor = !settingsOpen && selected == key ? Color.FromArgb(48, 64, 62) : Surface;
-            button.FlatAppearance.BorderColor = !settingsOpen && selected == key ? Color.FromArgb(121, 201, 179) : Color.FromArgb(57, 64, 73);
+            button.BackColor = !pageOpen && selected == key ? Color.FromArgb(48, 64, 62) : Surface;
+            button.FlatAppearance.BorderSize = !pageOpen && selected == key ? 1 : 0;
+            button.FlatAppearance.BorderColor = !pageOpen && selected == key ? Color.FromArgb(121, 201, 179) : Color.FromArgb(57, 64, 73);
         }
-        settingsButton.BackColor = settingsOpen ? Color.FromArgb(48, 64, 62) : Surface;
-        settingsButton.FlatAppearance.BorderColor = settingsOpen ? Color.FromArgb(121, 201, 179) : Color.FromArgb(57, 64, 73);
+        foreach (var (button, active) in new[] { (settingsButton, page == HubPage.Settings), (usageButton, page == HubPage.Usage) })
+        {
+            button.BackColor = active ? Color.FromArgb(48, 64, 62) : Surface;
+            button.FlatAppearance.BorderSize = active ? 1 : 0;
+            button.FlatAppearance.BorderColor = active ? Color.FromArgb(121, 201, 179) : Color.FromArgb(57, 64, 73);
+        }
+    }
+
+    private void ShowUsage()
+    {
+        if (busy || closing) return;
+        page = HubPage.Usage;
+        focusPresentation = false;
+        dock.HideAll();
+        ClearContent();
+        empty.Padding = Padding.Empty;
+        usagePage = new UsagePage(usageReaders.Providers, () => _ = usage.RefreshAsync(true), async () =>
+        {
+            if (selected is { } key) await Select(AppEntry.All.Single(a => a.Key == key));
+            else ShowWelcome();
+        }, ShowSettings);
+        empty.Controls.Add(usagePage);
+        empty.Visible = true;
+        heading.Text = "Usage   /   Allowances and connections";
+        detach.Enabled = false;
+        status.Text = "Usage readings cover the named product only.";
+        UpdateNavigation(); UpdateUsage();
+    }
+
+    private void UsageChanged()
+    {
+        if (closing || IsDisposed || !IsHandleCreated) return;
+        try { BeginInvoke((Action)(() => { if (!closing && !IsDisposed) UpdateUsage(); })); }
+        catch (InvalidOperationException) { /* The hub is closing. */ }
+    }
+
+    private void UpdateUsage()
+    {
+        var states = usage.States;
+        usageStrip.Update(states);
+        usagePage?.Update(states, usage.Busy);
+        int previousCount = usageAlerts.Sent.Count;
+        foreach (var state in states)
+        {
+            var provider = usageReaders.Providers.Single(p => p.Id == state.Id);
+            foreach (var alert in usageAlerts.Evaluate(provider, state, DateTimeOffset.Now,
+                usagePreferences.LowAlerts, usagePreferences.ResetAlerts, usagePreferences.UsedThreshold)) pendingAlerts.Enqueue(alert);
+        }
+        if (usageAlerts.Sent.Count != previousCount)
+        {
+            usagePreferences.SentAlerts = usageAlerts.Sent;
+            try { usagePreferences.Save(usagePreferencesPath); }
+            catch { status.Text = "Could not save alert history. Alerts may repeat after restart."; }
+        }
+    }
+
+    private void SaveUsagePreferences(UsagePreferences proposed)
+    {
+        proposed.SentAlerts = usageAlerts.Sent;
+        proposed.Save(usagePreferencesPath);
+        usagePreferences = proposed;
+        foreach (var provider in usageReaders.Providers) usage.SetEnabled(provider.Id, proposed.IsEnabled(provider.Id));
+        pendingAlerts.Clear();
+        usageNotifications.Visible = proposed.LowAlerts || proposed.ResetAlerts;
+        UpdateUsage();
+        _ = usage.RefreshAsync(true);
+    }
+
+    private void UpdateStatusVisibility()
+    {
+        navigationHints.SetToolTip(heading, status.Text);
+        status.Visible = busy || status.Text.Contains("failed", StringComparison.OrdinalIgnoreCase)
+            || status.Text.Contains("could not", StringComparison.OrdinalIgnoreCase) || status.Text.Contains("not applied", StringComparison.OrdinalIgnoreCase);
     }
 }

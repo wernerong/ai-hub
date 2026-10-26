@@ -1,4 +1,37 @@
-AI Hub 0.1.3 — Windows desktop preview
+AI Hub 0.2.1 — Windows desktop preview
+
+0.2.1: OpenAI fits above the bottom usage strip even when its standalone
+minimum window height exceeds the workspace. The app content resizes to fit;
+pop out restores the original size and normal minimum-size behavior.
+
+0.2.0: Integrated usage monitoring
+The compact bottom strip shows Codex, Grok CLI / Build and Grok Bot allowances.
+Click an indicator or Usage in the rail for all reported windows, reset times,
+credits, connection status and errors. Each strip indicator shows the most
+constrained reported window. Readings refresh independently every minute.
+Unavailable is never treated as a full allowance; stale readings retain their
+last successful timestamp. Reset countdowns do not invent new allowance.
+
+Settings includes provider switches, optional low-allowance and confirmed-reset
+notifications, an adjustable remaining-percentage threshold, Windows startup,
+and the existing app content zoom. Alerts default off. Notifications deduplicate
+across restarts and resets need a fresh provider reading as confirmation.
+Preferences and alert identifiers are stored in usage-settings.json under
+%LOCALAPPDATA%\AIHub; the existing zoom-settings.json is preserved.
+
+Codex usage covers Codex, not ChatGPT or Dot. Grok usage covers CLI / Build,
+not Grok web chat. AI Hub uses existing local provider logins in memory to read
+usage. It does not save tokens, read chat history or manage subscriptions.
+The separate AI Usage Widget is unchanged; close it when using AI Hub for
+monitoring to avoid duplicate provider requests. Provider API changes or expired
+logins can make individual readings unavailable without interrupting other apps.
+
+0.1.5: The compact app switcher shows each app's own icon above its name.
+Icons scale with Windows display settings; descriptions remain in tooltips.
+
+0.1.4: The left sidebar is a compact 88-pixel app switcher (at 100% Windows
+scaling), down from 224 pixels. Hover over an app for its description. Settings
+and the release version remain at the bottom; the active AI gets more width.
 
 0.1.3: The release version stays visible in the title bar and sidebar.
 A futuristic hub icon appears in the app, taskbar and Windows executable.
@@ -54,8 +87,9 @@ Window recovery
 The hub saves original window styles, positions and process identity in
 %LOCALAPPDATA%\AIHub and starts a separate recovery helper. If the hub exits
 unexpectedly, the helper restores the still-running app windows. Relaunching
-the hub also attempts recovery from saved records. No chat content or passwords
-are read by AI Hub. Never move/delete AIHub.exe while it is running.
+the hub also attempts recovery from saved records. Usage readers use existing
+local authentication tokens in memory; no chat content or passwords are read.
+Never move/delete AIHub.exe while it is running.
 
 Build from source
 Requires the .NET 10 SDK on Windows. Run Build.ps1 in PowerShell.
@@ -66,9 +100,12 @@ Run: AIHub.exe --self-test <absolute-test-output-directory>
 This creates disposable sample windows and a report named validation.txt.
 It tests grouping, bounds, switching, original window restoration, process
 identity checks, crash recovery and preservation of differing display modes.
+It also checks minimum-size apps in smaller workspaces and after reselection,
+including restoration of their original size and minimum-size behavior.
 Only the disposable sample app and the test host are closed/terminated by tests.
-The release passes 48 automated checks, including settings persistence,
-per-app zoom steps, reset, invalid settings and cancellation after focus loss.
+The release includes deterministic quota-parser, polling, cancellation, stale
+data, alert deduplication and preference checks, plus the original window
+recovery and zoom checks. The package includes its complete validation report.
 Live verification covers the settings layout and Grok Bot zoom and reset.
 OpenAI shortcut behavior was inspected in the installed app's code; its UI
 was not automated. Native app updates may change their shortcut behavior.

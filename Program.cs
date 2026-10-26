@@ -10,6 +10,14 @@ internal static class Program
     {
         if (args.Contains("--dpi-v1")) Application.SetHighDpiMode(HighDpiMode.PerMonitor);
         ApplicationConfiguration.Initialize();
+        if (args.Length == 2 && args[0] == "--usage-diagnostics")
+        {
+            using var readers = new AIHub.Usage.UsageReaders();
+            using var monitor = new AIHub.Usage.UsageMonitor(readers.Providers);
+            monitor.RefreshAsync().GetAwaiter().GetResult();
+            File.WriteAllText(args[1], JsonSerializer.Serialize(monitor.States, new JsonSerializerOptions { WriteIndented = true }));
+            return;
+        }
         if (args.Length >= 4 && args[0] == "--crash-host")
         {
             SelfTest.CrashHost((nint)long.Parse(args[1]), int.Parse(args[2]), args[3]);
@@ -45,6 +53,7 @@ internal static class Program
         if (args.Length > 0 && args[0] == "--sample")
         {
             var sample = new Form { Text = "AI Hub test window", Size = new Size(700, 480), StartPosition = FormStartPosition.CenterScreen };
+            if (args.Contains("--minimum-size")) sample.MinimumSize = new Size(400, 1000);
             sample.Controls.Add(new TextBox { Multiline = true, Dock = DockStyle.Fill, Text = "Disposable window for dock, resize and restore checks.", Font = new Font("Segoe UI", 15) });
             Application.Run(sample);
             return;

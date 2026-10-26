@@ -18,6 +18,7 @@ internal static class SelfTest
             try
             {
                 await CheckZoomSettings(folder, lines);
+                await UsageChecks.Run(folder, lines);
                 sample = Program.StartSelf("--sample");
                 WindowInfo? window = null;
                 for (int i = 0; i < 80; i++)
@@ -89,6 +90,39 @@ internal static class SelfTest
                 Check(Native.DpiName(window!.Handle) == "PerMonitor", "Grouping preserves the legacy app's DPI mode", lines);
                 manager.RestoreAll();
                 Check(Native.GetParent(window.Handle) == 0 && Native.DpiName(window.Handle) == "PerMonitor", "Legacy app restores with its original DPI mode", lines);
+                sample.CloseMainWindow();
+                await sample.WaitForExitAsync();
+                sample.Dispose();
+                sample = Program.StartSelf("--sample", "--minimum-size");
+                window = null;
+                for (int i = 0; i < 60; i++)
+                {
+                    await Task.Delay(100);
+                    window = Native.Windows().FirstOrDefault(w => w.Pid == sample.Id);
+                    if (window is not null) break;
+                }
+                Check(window is not null, "App with a minimum window size starts", lines);
+                Native.GetWindowRect(window!.Handle, out var minimumRect);
+                Native.GetWindowRect(panel.Handle, out var availableRect);
+                Check(minimumRect.Bottom - minimumRect.Top >= 1000 && availableRect.Bottom - availableRect.Top < 1000,
+                    "Minimum-size fixture is taller than the available workspace", lines);
+                await manager.Attach("minimum", window, panel.Handle);
+                CheckBounds(window.Handle, panel.Handle, "Minimum-size app fits without overlapping the usage strip", lines);
+                // Exercise the same ongoing alignment and reselection used by the hub.
+                form.Height -= 80;
+                await Task.Delay(50);
+                manager.Resize("minimum", panel.Handle);
+                CheckBounds(window.Handle, panel.Handle, "Minimum-size app follows a smaller workspace", lines);
+                manager.Select("other", panel.Handle);
+                manager.Select("minimum", panel.Handle);
+                CheckBounds(window.Handle, panel.Handle, "Reselecting the minimum-size app preserves workspace bounds", lines);
+                manager.Detach("minimum");
+                var poppedOut = SavedWindow.Capture(window.Handle);
+                Native.SetWindowPos(window.Handle, 0, 0, 0, 700, 500, 0x2 | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+                Native.GetWindowRect(window.Handle, out var popOutRect);
+                Check(poppedOut.Placement.NormalPosition.Bottom - poppedOut.Placement.NormalPosition.Top >= 1000
+                    && popOutRect.Bottom - popOutRect.Top >= 1000,
+                    "Pop out restores the original size and retains the app's own minimum-size behavior", lines);
             }
             catch (Exception ex) { lines.Add("FAIL " + ex); Environment.ExitCode = 1; }
             finally
@@ -123,6 +157,12 @@ internal static class SelfTest
     {
         if (!condition) throw new InvalidOperationException(label);
         lines.Add("PASS " + label);
+    }
+    private static void CheckBounds(nint window, nint viewport, string label, List<string> lines)
+    {
+        Check(Native.GetWindowRect(window, out var actual) && Native.GetWindowRect(viewport, out var expected)
+            && actual.Left == expected.Left && actual.Top == expected.Top
+            && actual.Right == expected.Right && actual.Bottom == expected.Bottom, label, lines);
     }
     private static async Task CheckZoomSettings(string folder, List<string> lines)
     {

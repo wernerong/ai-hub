@@ -1,0 +1,14 @@
+The Codex, Grok CLI / Build and Grok Bot readers are adapted from the user's
+AI Usage Widget v1.15.0, commit 25b305c:
+https://github.com/wernerong/ai-usage-widget
+Original files: source/Providers.cs and source/GrokBotProvider.cs.
+
+AIHub.Usage is a UI-independent .NET library. It contains no WinForms or
+Avalonia references. AI Hub owns its display, settings and notifications.
+Grok Bot's adapter is Windows-only in this distribution.
+
+The original floating widget remains independently installed. This version
+does not alter its startup setting or replace its executable. Close the
+floating widget when using AI Hub as the usage monitor to avoid duplicate
+provider requests. The library can also be adopted by that application's
+future releases; no cross-application live connection is claimed here.

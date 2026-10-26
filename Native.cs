@@ -9,7 +9,7 @@ internal static class Native
 {
     internal const int GWL_STYLE = -16, GWL_EXSTYLE = -20;
     internal const long Frame = 0x00C00000L | 0x00040000L | 0x00080000L | 0x00020000L | 0x00010000L;
-    internal const uint SWP_FRAMECHANGED = 0x20, SWP_NOACTIVATE = 0x10, SWP_NOZORDER = 0x4;
+    internal const uint SWP_FRAMECHANGED = 0x20, SWP_NOACTIVATE = 0x10, SWP_NOZORDER = 0x4, SWP_NOSENDCHANGING = 0x400;
     internal const int SW_HIDE = 0, SW_SHOWNOACTIVATE = 4, SW_SHOW = 5, SW_SHOWNA = 8, SW_RESTORE = 9;
     internal delegate bool EnumProc(nint window, nint parameter);
 
@@ -111,8 +111,19 @@ internal static class Native
         if (!GetWindowRect(viewport, out var rect)) throw new InvalidOperationException("The workspace is not available.");
         GetWindowRect(hwnd, out var current);
         if (!raise && !frameChanged && current.Left == rect.Left && current.Top == rect.Top && current.Right == rect.Right && current.Bottom == rect.Bottom) return;
-        if (!SetWindowPos(hwnd, 0, rect.Left, rect.Top, Math.Max(1, rect.Right - rect.Left), Math.Max(1, rect.Bottom - rect.Top), SWP_NOACTIVATE | (frameChanged ? SWP_FRAMECHANGED : 0) | (raise ? 0 : SWP_NOZORDER)))
+        uint flags = SWP_NOACTIVATE | (frameChanged ? SWP_FRAMECHANGED : 0) | (raise ? 0 : SWP_NOZORDER);
+        int width = Math.Max(1, rect.Right - rect.Left), height = Math.Max(1, rect.Bottom - rect.Top);
+        if (!SetWindowPos(hwnd, 0, rect.Left, rect.Top, width, height, flags))
             throw new Win32Exception(Marshal.GetLastPInvokeError());
+        // Some apps (including OpenAI) enforce their standalone minimum size in
+        // WM_WINDOWPOSCHANGING, extending over the hub's usage strip. Retry only
+        // a constrained resize without that message; WM_SIZE still lays out the
+        // app content. This flag is local to this call, so pop out retains the
+        // app's normal sizing rules and no content needs to be clipped.
+        if (GetWindowRect(hwnd, out current) && (current.Left != rect.Left || current.Top != rect.Top
+            || current.Right != rect.Right || current.Bottom != rect.Bottom))
+            if (!SetWindowPos(hwnd, 0, rect.Left, rect.Top, width, height, flags | SWP_NOSENDCHANGING))
+                throw new Win32Exception(Marshal.GetLastPInvokeError());
     }
     internal static List<WindowInfo> Windows()
     {
