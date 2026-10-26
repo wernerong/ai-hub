@@ -1,0 +1,12 @@
+Created with the built-in imagegen tool on 2026-10-26.
+AIHub.png is the original generated RGBA image. AIHub.ico contains Windows
+icon sizes from 16 through 256 pixels, converted without changing the artwork.
+
+Prompt:
+Use case: logo-brand
+Asset type: Windows desktop application icon for AI Hub
+Primary request: a premium futuristic app icon that represents several AI apps connected in one hub.
+Subject: a bold sculpted geometric central hub with three connected orbital segments, a compact recognizable silhouette, subtle dimensional polished glass-metal finish and luminous accents.
+Composition: one centered square icon, a softly rounded dark graphite square tile filling 90 percent of the canvas, emblem large and clear at 32 pixels, generous consistent outer transparent margin.
+Mood: precise futuristic desktop software, restrained and elegant.
+Constraints: no letters, words, numbers, provider logos, watermark, tiny circuitry, mockup, interface, or surrounding scenery. True transparent background outside the rounded tile. One final icon only.
