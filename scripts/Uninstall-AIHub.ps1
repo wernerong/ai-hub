@@ -16,7 +16,7 @@ try {
         $shortcut = Join-Path $folder 'AI Hub.lnk'
         if ((Test-Path -LiteralPath $shortcut) -and $shell.CreateShortcut($shortcut).TargetPath -eq $exe) { Remove-Item -LiteralPath $shortcut }
     }
-    foreach ($name in @('AIHub.exe', 'README.txt', 'validation.txt', 'Uninstall-AIHub.ps1')) {
+    foreach ($name in @('AIHub.exe', 'README.txt', 'validation.txt', 'Install-AIHub.ps1', 'Uninstall-AIHub.ps1')) {
         $file = [IO.Path]::GetFullPath((Join-Path $expected $name))
         if ([IO.Path]::GetDirectoryName($file) -ne $expected) { throw 'Unexpected uninstall file path.' }
         if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file }

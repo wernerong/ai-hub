@@ -16,7 +16,7 @@ $report = Join-Path $validation 'validation.txt'
 if ($test.ExitCode -ne 0 -or -not (Test-Path $report) -or (Select-String -Path $report -Pattern '^FAIL' -Quiet)) { throw 'AI Hub self-test failed.' }
 Copy-Item $report $staging
 $zip = Join-Path $output "AIHub-v$version-windows-x64.zip"
-Compress-Archive -Path $exe,(Join-Path $staging 'README.txt'),(Join-Path $staging 'validation.txt'),(Join-Path $staging 'Uninstall-AIHub.ps1') -DestinationPath $zip -Force
+Compress-Archive -Path $exe,(Join-Path $staging 'README.txt'),(Join-Path $staging 'validation.txt'),(Join-Path $staging 'Install-AIHub.ps1'),(Join-Path $staging 'Uninstall-AIHub.ps1') -DestinationPath $zip -Force
 $checksum = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 "$checksum  $([IO.Path]::GetFileName($zip))" | Set-Content (Join-Path $output 'SHA256SUMS.txt') -Encoding ascii
 Write-Output $zip

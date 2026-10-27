@@ -10,11 +10,27 @@ between ChatGPT, Codex and Dot.
 
 ## Run
 
-Download the Windows x64 ZIP from Releases, extract it and run `AIHub.exe`.
+Download the Windows x64 ZIP from [the latest public release](https://github.com/wernerong/ai-hub/releases/latest),
+verify it against `SHA256SUMS.txt`, and extract it. Run `Install-AIHub.ps1` in
+PowerShell to install for your Windows account with shortcuts and an entry in
+Installed apps. You can also run `AIHub.exe` from a writable folder.
 The .NET runtime is included. The AI apps must already be installed.
 
 The version stays visible in the title bar and sidebar. **Pop out** restores
 one app's original window; **Restore all** or closing the hub restores them all.
+
+## Automatic updates
+
+Version 0.3.0 is the first public release. It checks published stable GitHub
+releases at startup and every six hours, verifies the download's SHA-256 digest,
+and installs when AI Hub closes after restoring its app windows. In **Settings**,
+choose **Check for updates**, **Restart to update**, or turn automatic updates off.
+Updates do not need a GitHub account. Builds before 0.3.0 need one manual upgrade.
+Your provider accounts, zoom choices and usage preferences stay in place.
+
+Publishing a GitHub release delivers an update; pushing source alone does not.
+The [local release script](docs/RELEASING.md) builds and uploads verified assets
+without using GitHub Actions jobs, minutes, artifact storage or cache storage.
 
 ## Build and package
 
@@ -42,7 +58,7 @@ connection errors. Each indicator shows the most constrained reported window.
 Readings refresh independently every minute; errors retain the last successful
 reading and mark it stale. Missing values remain unavailable.
 
-**Settings** controls provider monitoring, optional low-allowance and confirmed
+**Settings** controls automatic updates, provider monitoring, optional low-allowance and confirmed
 reset notifications, the low-allowance threshold, Windows startup, and app zoom.
 Notifications default off and deduplicate across restarts. Reset notifications
 require a fresh reading with a newer reset window and reduced usage, not just
@@ -71,3 +87,5 @@ testing across multiple monitors, virtual desktops and voice/video workflows.
 See [README.txt](README.txt) for usage, recovery details and validation scope.
 The icon was created with built-in image generation; its prompt is recorded in
 [Assets/icon-prompt.txt](Assets/icon-prompt.txt).
+Provider artwork is attributed in [Assets/Providers/README.txt](Assets/Providers/README.txt).
+See [CHANGELOG.md](CHANGELOG.md) for release history.

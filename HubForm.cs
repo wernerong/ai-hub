@@ -17,6 +17,9 @@ internal sealed class HubForm : Form
     private readonly Button detach, restore, settingsButton, usageButton;
     private readonly UsageReaders usageReaders = new();
     private readonly UsageMonitor usage;
+    private readonly AppUpdater updater;
+    private bool restartForUpdate;
+    private readonly System.Windows.Forms.Timer updateTimer = new() { Interval = 60000 };
     private UsagePreferences usagePreferences;
     private readonly string usagePreferencesPath;
     private readonly UsageAlerts usageAlerts;
@@ -43,6 +46,8 @@ internal sealed class HubForm : Form
         zoom = new ZoomSettings(Path.Combine(Path.GetDirectoryName(statePath)!, "zoom-settings.json"));
         usagePreferencesPath = Path.Combine(Path.GetDirectoryName(statePath)!, "usage-settings.json");
         usagePreferences = UsagePreferences.Load(usagePreferencesPath);
+        updater = new AppUpdater(Path.GetDirectoryName(statePath)!, Environment.ProcessPath!);
+        updateTimer.Tick += async (_, _) => await updater.CheckAsync();
         usage = new UsageMonitor(usageReaders.Providers, usagePreferences.IsEnabled);
         usageAlerts = new UsageAlerts(usagePreferences.SentAlerts);
         usageStrip = new UsageStrip(usageReaders.Providers, ShowUsage);
@@ -149,6 +154,9 @@ internal sealed class HubForm : Form
             usageTimer.Start();
             nextUsageRefresh = DateTimeOffset.Now.AddSeconds(5);
             _ = usage.RefreshAsync();
+            updateTimer.Start();
+            _ = updater.CheckAsync();
+            _ = Task.Run(() => UpdateInstaller.Cleanup(Path.Combine(Path.GetDirectoryName(statePath)!, "updates")));
         };
         timer.Tick += (_, _) =>
         {
@@ -181,6 +189,8 @@ internal sealed class HubForm : Form
         };
         FormClosed += (_, _) =>
         {
+            updateTimer.Stop(); updateTimer.Dispose();
+            updater.ApplyOnClose(restartForUpdate); updater.Dispose();
             usageTimer.Stop(); usage.Changed -= UsageChanged; usage.Dispose(); usageTimer.Dispose();
             usageReaders.Dispose(); usageNotifications.Visible = false;
             usageNotifications.Icon?.Dispose(); usageNotifications.Dispose();
@@ -250,9 +260,13 @@ internal sealed class HubForm : Form
         {
             appliedZoom.Remove(entry.Key);
             await Select(entry);
-        }, usagePreferences, usageReaders.Providers, SaveUsagePreferences));
+        }, usagePreferences, usageReaders.Providers, SaveUsagePreferences, updater, () =>
+        {
+            restartForUpdate = true;
+            Close();
+        }));
         empty.Visible = true;
-        heading.Text = "Settings   /   Zoom, usage and alerts";
+        heading.Text = "Settings   /   Updates, zoom, usage and alerts";
         detach.Enabled = false;
         status.Text = "Choose a zoom level for each AI panel.";
         UpdateNavigation();

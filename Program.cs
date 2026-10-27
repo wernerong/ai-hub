@@ -10,6 +10,18 @@ internal static class Program
     {
         if (args.Contains("--dpi-v1")) Application.SetHighDpiMode(HighDpiMode.PerMonitor);
         ApplicationConfiguration.Initialize();
+        if (args.Length == 2 && args[0] == "--apply-update")
+        {
+            Environment.ExitCode = UpdateInstaller.Run(args[1]);
+            return;
+        }
+        if (args.Length == 3 && args[0] == "--update-test-host")
+        {
+            File.WriteAllText(args[1], "ready");
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (!File.Exists(args[2]) && DateTime.UtcNow < deadline) Thread.Sleep(50);
+            return;
+        }
         if (args.Length == 2 && args[0] == "--usage-diagnostics")
         {
             using var readers = new AIHub.Usage.UsageReaders();

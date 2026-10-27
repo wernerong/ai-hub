@@ -19,6 +19,7 @@ internal static class SelfTest
             {
                 await CheckZoomSettings(folder, lines);
                 await UsageChecks.Run(folder, lines);
+                await UpdateChecks.Run(folder, lines);
                 sample = Program.StartSelf("--sample");
                 WindowInfo? window = null;
                 for (int i = 0; i < 80; i++)

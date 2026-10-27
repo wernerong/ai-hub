@@ -6,3 +6,5 @@ artifacts/
 *.user
 *.suo
 *.tmp
+work/
+outputs/

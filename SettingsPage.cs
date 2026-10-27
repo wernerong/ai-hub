@@ -10,7 +10,8 @@ internal sealed class SettingsPage : UserControl
         public override string ToString() => Percent is int p ? $"{p}%" : "Keep current zoom";
     }
     internal SettingsPage(ZoomSettings settings, Action<string, int?> save, Func<AppEntry, Task> open,
-        UsagePreferences usageSettings, UsageProvider[] providers, Action<UsagePreferences> saveUsage)
+        UsagePreferences usageSettings, UsageProvider[] providers, Action<UsagePreferences> saveUsage,
+        AppUpdater updater, Action restartForUpdate)
     {
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96, 96);
@@ -21,6 +22,7 @@ internal sealed class SettingsPage : UserControl
         AutoScroll = true;
         Padding = new Padding(30, 24, 30, 24);
         var stack = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        stack.Controls.Add(new UpdateSettingsPanel(updater, restartForUpdate));
         stack.Controls.Add(new Label { Text = "Usage & alerts", UseMnemonic = false, AutoSize = true, Font = new Font("Segoe UI Semibold", 24), Margin = new Padding(0, 0, 0, 12) });
         var usagePanel = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true,
             Width = 680, Margin = new Padding(0, 0, 0, 24) };

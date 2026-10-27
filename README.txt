@@ -1,4 +1,22 @@
-AI Hub 0.2.1 — Windows desktop preview
+AI Hub 0.3.0 — Initial public Windows release
+
+0.3.0: Public GitHub releases and automatic updates
+Download: https://github.com/wernerong/ai-hub/releases/latest
+Verify the ZIP with SHA256SUMS.txt, extract, and run Install-AIHub.ps1 in
+PowerShell for a per-user installation with shortcuts and Windows Installed
+apps registration. AIHub.exe can also run from a writable folder.
+
+Updates check published stable releases at startup and every six hours.
+The SHA-256 digest and executable version are verified before installation.
+Downloaded updates install when you close AI Hub, after grouped windows are
+restored. Settings offers Check for updates, Restart to update and an automatic
+update switch. Failed replacement rolls back the files. Provider accounts,
+zoom and usage preferences are retained. No GitHub login or Actions minutes
+are needed. Earlier builds require this one manual upgrade to gain updates.
+
+Update preferences live in %LOCALAPPDATA%\AIHub\update-settings.json; staged
+updates and attempt reports live in its updates subfolder. Completed staging
+is cleaned on the next app start. The updater never elevates or quits AI apps.
 
 0.2.1: OpenAI fits above the bottom usage strip even when its standalone
 minimum window height exceeds the workspace. The app content resizes to fit;
