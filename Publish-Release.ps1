@@ -68,7 +68,18 @@ try {
     if ($Publish) {
         $repo = Invoke-RestMethod -Uri $api -Headers $headers
         if ($repo.private) { throw 'Make the repository public before publishing the public update channel.' }
-        $release = Invoke-RestMethod -Uri ($api + '/releases/' + $release.id) -Method Patch -Headers $headers -ContentType 'application/json' -Body '{"draft":false,"prerelease":false,"make_latest":"true"}'
+        # A private-to-public change can briefly leave the release write route
+        # returning 404 even while the verified draft remains readable.
+        $releaseUri = $api + '/releases/' + $release.id
+        for ($attempt = 0; $attempt -lt 4; $attempt++) {
+            try {
+                $release = Invoke-RestMethod -Uri $releaseUri -Method Patch -Headers $headers -ContentType 'application/json' -Body '{"draft":false,"prerelease":false,"make_latest":"true"}'
+                break
+            } catch {
+                if (-not $MakePublic -or $attempt -eq 3 -or [int]$_.Exception.Response.StatusCode -ne 404) { throw }
+                Start-Sleep -Seconds ([int][Math]::Pow(2, $attempt + 1))
+            }
+        }
         if ($release.draft -or $release.prerelease) { throw 'The public release was not published.' }
     }
     [pscustomobject]@{ Version = $version; Tag = $tag; Commit = $commit; ReleaseId = $release.id; ReleaseUrl = $release.html_url; Draft = $release.draft; Assets = $localInfo; GitHubActionsMinutesUsed = 0 } |
