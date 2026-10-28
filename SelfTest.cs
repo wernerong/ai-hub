@@ -21,6 +21,7 @@ internal static class SelfTest
                 await UsageChecks.Run(folder, lines);
                 DiscoveryChecks.Run(folder, lines);
                 ActivationChecks.CheckPolicy(lines);
+                await TaskbarChecks.Run(form.Handle, lines);
                 await UpdateChecks.Run(folder, lines);
                 sample = Program.StartSelf("--sample");
                 WindowInfo? window = null;

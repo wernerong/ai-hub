@@ -81,6 +81,17 @@ internal static class ActivationChecks
                     Check(Native.IsWindowVisible(window.Handle) && Native.IsAbove(window.Handle, form.Handle)
                         && Native.IsAbove(form.Handle, otherWindow.Handle), $"Return {repeat} restores the selected app above the workspace");
                     Check(Native.GetForegroundWindow() == window.Handle, "Settled return activation focuses the selected app");
+                    form.WindowState = FormWindowState.Minimized; manager.HideAll();
+                    await Task.Delay(60);
+                    Check(Native.IsIconic(form.Handle) && !Native.IsWindowVisible(window.Handle) && !sample.HasExited,
+                        $"Minimize {repeat} hides the selected AI without closing it");
+                    form.WindowState = FormWindowState.Normal; Native.SetForegroundWindow(form.Handle);
+                    await Task.Delay(60);
+                    manager.Select("sample", viewport.Handle, true);
+                    await Task.Delay(60);
+                    Check(!Native.IsIconic(form.Handle) && Native.IsWindowVisible(window.Handle)
+                        && Native.IsAbove(window.Handle, form.Handle) && Native.GetForegroundWindow() == window.Handle,
+                        $"Restore {repeat} returns the same AI above the workspace with focus");
                 }
             }
             catch (Exception ex) { lines.Add("FAIL " + ex.Message); }

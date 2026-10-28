@@ -42,6 +42,7 @@ internal sealed class HubForm : Form
     private bool presentationQueued;
     private bool focusPresentation;
     private readonly WorkspaceActivation activation = new();
+    private TaskbarToggle? taskbar;
     private enum HubPage { Workspace, Settings, Usage }
     private HubPage page;
     private bool pageOpen => page != HubPage.Workspace;
@@ -149,14 +150,21 @@ internal sealed class HubForm : Form
         };
         viewport.Resize += (_, _) => ResizeSelected();
         LocationChanged += (_, _) => ResizeSelected();
-        Activated += (_, _) => { activation.Request(); QueueSelectedPresentation(); };
-        Shown += (_, _) =>
+        Activated += (_, _) => { activation.Request(); if (taskbar?.Pending != true) QueueSelectedPresentation(); };
+        Resize += (_, _) =>
+        {
+            if (WindowState != FormWindowState.Minimized) return;
+            activation.Cancel(); taskbar?.Cancel(); focusPresentation = false;
+            dock.HideAll(); minimized = true;
+        };
+        Shown += async (_, _) =>
         {
             var area = Screen.FromControl(this).WorkingArea;
             Size = new Size(Math.Min(Width, area.Width - 40), Math.Min(Height, area.Height - 40));
             Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + (area.Height - Height) / 2);
             int dark = 1;
             Native.DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int));
+            taskbar = new TaskbarToggle(Handle);
             timer.Start();
             usageTimer.Start();
             nextUsageRefresh = DateTimeOffset.Now.AddSeconds(5);
@@ -164,9 +172,17 @@ internal sealed class HubForm : Form
             updateTimer.Start();
             _ = updater.CheckAsync();
             _ = Task.Run(() => UpdateInstaller.Cleanup(Path.Combine(Path.GetDirectoryName(statePath)!, "updates")));
+            if (!await taskbar.Ready && !closing) status.Text = "Could not enable taskbar toggling. The title-bar minimize button is still available.";
         };
         timer.Tick += (_, _) =>
         {
+            taskbar?.SetTarget(!closing && !busy && !pageOpen && WindowState != FormWindowState.Minimized
+                && selected is not null && dock.Windows.TryGetValue(selected, out var activeWindow) && activeWindow.Matches() ? (nint)activeWindow.Handle : 0);
+            if (taskbar?.Take(Control.MouseButtons != MouseButtons.None) == true)
+            {
+                WindowState = FormWindowState.Minimized;
+                return;
+            }
             if (WindowState == FormWindowState.Minimized)
             {
                 if (!minimized) dock.HideAll();
@@ -198,6 +214,7 @@ internal sealed class HubForm : Form
         };
         FormClosed += (_, _) =>
         {
+            taskbar?.Dispose();
             updateTimer.Stop(); updateTimer.Dispose();
             updater.ApplyOnClose(restartForUpdate); updater.Dispose();
             usageTimer.Stop(); usage.Changed -= UsageChanged; usage.Dispose(); usageTimer.Dispose();
@@ -209,6 +226,12 @@ internal sealed class HubForm : Form
         // all children exist, not before Font changes trigger automatic layout.
         AutoScaleDimensions = new SizeF(96, 96);
         PerformAutoScale();
+    }
+
+    protected override void WndProc(ref Message message)
+    {
+        if (message.Msg == 0x0006 && ((long)message.WParam & 0xffff) != 0) taskbar?.Activated(message.LParam);
+        base.WndProc(ref message);
     }
 
     private static Button MakeButton(string text, Action click)
@@ -352,6 +375,7 @@ internal sealed class HubForm : Form
     }
     private void QueueSelectedPresentation(bool focus = false)
     {
+        if (taskbar?.Pending == true) return;
         if (closing || !IsHandleCreated || IsDisposed) return;
         focusPresentation |= focus;
         if (presentationQueued) return;
@@ -361,7 +385,7 @@ internal sealed class HubForm : Form
             presentationQueued = false;
             bool activate = focusPresentation;
             focusPresentation = false;
-            if (closing || busy || pageOpen || selected is null || WindowState == FormWindowState.Minimized) return;
+            if (closing || busy || pageOpen || selected is null || WindowState == FormWindowState.Minimized || taskbar?.Pending == true) return;
             // Windows finishes activating/raising the hub before its app is
             // placed above the content area. Do not steal focus from other apps.
             if (Native.GetForegroundWindow() != Handle && !dock.IsForeground(selected)) return;

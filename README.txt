@@ -1,4 +1,11 @@
-AI Hub 0.4.0 — Windows desktop workspace
+AI Hub 0.4.1 — Windows desktop workspace
+
+0.4.1: Normal taskbar minimize and restore
+Click AI Hub's taskbar button while its connected AI is active to minimize the
+workspace. Click again to restore the same selected AI. Title-bar minimization
+also hides connected windows immediately. Sidebar clicks, switching back from
+another app, modified clicks and dragging taskbar icons retain their behavior.
+Provider windows remain independent, with their original recovery protections.
 
 0.4.0: Your apps, discovered automatically; a new HUD usage dashboard
 Only installed or open AI apps appear in the sidebar. Built-in discovery covers

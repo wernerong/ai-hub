@@ -74,6 +74,13 @@ keep their own zoom controls.
 
 ### Window behavior and usage
 
+Version 0.4.1 makes clicking AI Hub's taskbar button minimize the workspace
+while a hosted AI has focus. The next click restores the selected AI. The
+handler pairs a brief taskbar mouse click with activation of this hub, ignores
+drags and modified clicks, and does not intercept input or record mouse history.
+Title-bar minimization immediately hides hosted windows. Their independent
+window identities, accounts and crash recovery remain intact.
+
 Version 0.3.1 keeps the selected AI app visible when you return from another
 window, without requiring another sidebar click. It waits for mouse presses
 to finish before restoring app focus, and leaves other applications in front

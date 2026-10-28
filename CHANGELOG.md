@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 — 2026-10-28
+
+- Minimize the workspace when its taskbar button is clicked while a hosted AI is active, and restore the same AI on the next click.
+- Hide connected windows immediately on title-bar minimization and cancel queued focus restoration.
+- Distinguish taskbar clicks from sidebar clicks, returns from other apps, modified clicks and taskbar drags.
+- Listen for the narrow taskbar gesture on a separate message thread without intercepting input or changing native window ownership.
+- Add taskbar policy and repeated native minimize/restore regression checks.
+
 ## 0.4.0 — 2026-10-28
 
 - Discover installed or open AI apps instead of showing a fixed provider list; keep hidden hosted windows connected.
