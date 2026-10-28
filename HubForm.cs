@@ -36,6 +36,7 @@ internal sealed class HubForm : Form
     private bool minimized;
     private bool presentationQueued;
     private bool focusPresentation;
+    private readonly WorkspaceActivation activation = new();
     private enum HubPage { Workspace, Settings, Usage }
     private HubPage page;
     private bool pageOpen => page != HubPage.Workspace;
@@ -142,7 +143,7 @@ internal sealed class HubForm : Form
         };
         viewport.Resize += (_, _) => ResizeSelected();
         LocationChanged += (_, _) => ResizeSelected();
-        Activated += (_, _) => QueueSelectedPresentation();
+        Activated += (_, _) => { activation.Request(); QueueSelectedPresentation(); };
         Shown += (_, _) =>
         {
             var area = Screen.FromControl(this).WorkingArea;
@@ -178,6 +179,8 @@ internal sealed class HubForm : Form
                 ShowWelcome("The app window closed. Select its tab to open it again.");
             }
             if (selected is not null && !busy) ResizeSelected();
+            if (activation.TakeRequest(selected is not null && !pageOpen && Native.GetForegroundWindow() == Handle,
+                busy || Control.MouseButtons != MouseButtons.None)) QueueSelectedPresentation(true);
         };
         FormClosing += (_, e) =>
         {
@@ -246,6 +249,7 @@ internal sealed class HubForm : Form
     private void ShowSettings()
     {
         if (busy || closing) return;
+        activation.Cancel();
         page = HubPage.Settings;
         focusPresentation = false;
         dock.HideAll();
@@ -275,6 +279,7 @@ internal sealed class HubForm : Form
     private async Task Select(AppEntry entry)
     {
         if (busy || closing) return;
+        activation.Cancel();
         busy = true;
         try
         {
@@ -352,8 +357,13 @@ internal sealed class HubForm : Form
             // Windows finishes activating/raising the hub before its app is
             // placed above the content area. Do not steal focus from other apps.
             if (Native.GetForegroundWindow() != Handle && !dock.IsForeground(selected)) return;
-            // Activation itself must not take focus from a mouse-down in the
-            // sidebar. Only a completed panel selection transfers focus.
+            // A panel click, or settled return activation, can transfer focus.
+            // Never interrupt a mouse press that may select a different panel.
+            if (activate && Control.MouseButtons != MouseButtons.None)
+            {
+                activation.Request();
+                return;
+            }
             try
             {
                 dock.Select(selected, viewport.Handle, activate);

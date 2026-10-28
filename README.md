@@ -48,6 +48,11 @@ must be new so stale files cannot enter a release.
 
 ## Behavior and limits
 
+Version 0.3.1 keeps the selected AI app visible when you return from another
+window, without requiring another sidebar click. It waits for mouse presses
+to finish before restoring app focus, and leaves other applications in front
+while AI Hub is in the background.
+
 Version 0.2.1 fixes OpenAI extending over the bottom usage strip when its
 standalone minimum window size exceeds the workspace. Constrained windows
 resize to fit the panel; popping them out restores their normal sizing rules.
@@ -89,3 +94,8 @@ The icon was created with built-in image generation; its prompt is recorded in
 [Assets/icon-prompt.txt](Assets/icon-prompt.txt).
 Provider artwork is attributed in [Assets/Providers/README.txt](Assets/Providers/README.txt).
 See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+To exercise foreground activation with disposable windows, run
+`AIHub.exe --activation-test <absolute-output-folder>` and click **Run activation
+checks**. These interactive checks complement the background self-test because
+Windows requires foreground permission to reproduce switching away and back.

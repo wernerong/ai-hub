@@ -1,4 +1,10 @@
-AI Hub 0.3.0 — Initial public Windows release
+AI Hub 0.3.1 — Windows desktop workspace
+
+0.3.1: Returning to AI Hub restores the selected AI app above its workspace
+without another sidebar click. Focus restoration waits for mouse presses to
+finish so sidebar clicks can complete. Other apps
+stay in front while the hub is in the background. The fix preserves app sizing,
+pop out, recovery and the existing update channel.
 
 0.3.0: Public GitHub releases and automatic updates
 Download: https://github.com/wernerong/ai-hub/releases/latest
@@ -114,6 +120,11 @@ Requires the .NET 10 SDK on Windows. Run Build.ps1 in PowerShell.
 The distributed executable includes the .NET runtime and targets Windows x64.
 
 Automated verification
+For foreground activation checks, run AIHub.exe --activation-test followed by
+an absolute output folder, then click Run activation checks. Five repeated
+away/return cycles use disposable windows and write activation-validation.txt.
+These require a real click to acquire Windows foreground permission.
+
 Run: AIHub.exe --self-test <absolute-test-output-directory>
 This creates disposable sample windows and a report named validation.txt.
 It tests grouping, bounds, switching, original window restoration, process

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 — 2026-10-28
+
+- Keep the selected AI app visible when returning to AI Hub from another window, without another sidebar click.
+- Wait for mouse presses to finish before restoring app focus, and cancel the previous app's restoration when a provider or Settings is selected.
+- Leave unrelated applications in front while AI Hub is in the background.
+- Add an interactive regression fixture for repeated foreground activation and window ordering.
+
 ## 0.3.0 — 2026-10-27
 
 - Publish the first public GitHub release with a self-contained Windows x64 package.

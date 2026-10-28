@@ -10,6 +10,11 @@ internal static class Program
     {
         if (args.Contains("--dpi-v1")) Application.SetHighDpiMode(HighDpiMode.PerMonitor);
         ApplicationConfiguration.Initialize();
+        if (args.Length == 2 && args[0] == "--activation-test")
+        {
+            ActivationChecks.Show(args[1]);
+            return;
+        }
         if (args.Length == 2 && args[0] == "--apply-update")
         {
             Environment.ExitCode = UpdateInstaller.Run(args[1]);
