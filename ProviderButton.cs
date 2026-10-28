@@ -10,21 +10,17 @@ internal sealed class ProviderButton : Button
     internal ProviderButton(AppEntry entry, Action click)
     {
         label = entry.Name;
-        using var stream = typeof(ProviderButton).Assembly
-            .GetManifestResourceStream($"AIHub.Assets.Providers.{entry.Key}.png")
-            ?? throw new InvalidOperationException($"The {entry.Name} icon is missing.");
-        using var source = Image.FromStream(stream);
-        icon = new Bitmap(source);
+        icon = UsageStyle.Icon(entry.Key, entry.Executable);
         AccessibleName = "Open " + entry.Name;
         AccessibleDescription = entry.Description;
         Size = new Size(72, 64);
         Margin = new Padding(0, 0, 0, 8);
         Font = new Font("Segoe UI Semibold", 9);
         FlatStyle = FlatStyle.Flat;
-        BackColor = Color.FromArgb(26, 30, 36);
+        BackColor = UsageStyle.Surface;
         ForeColor = entry.Accent;
         Cursor = Cursors.Hand;
-        FlatAppearance.MouseOverBackColor = Color.FromArgb(47, 55, 65);
+        FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 44, 61);
         SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
         Click += (_, _) => click();
     }

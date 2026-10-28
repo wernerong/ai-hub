@@ -11,13 +11,13 @@ internal sealed class SettingsPage : UserControl
     }
     internal SettingsPage(ZoomSettings settings, Action<string, int?> save, Func<AppEntry, Task> open,
         UsagePreferences usageSettings, UsageProvider[] providers, Action<UsagePreferences> saveUsage,
-        AppUpdater updater, Action restartForUpdate)
+        AppUpdater updater, Action restartForUpdate, AppEntry[] apps)
     {
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96, 96);
         Dock = DockStyle.Fill;
-        BackColor = Color.FromArgb(19, 22, 27);
-        ForeColor = Color.FromArgb(236, 240, 244);
+        BackColor = UsageStyle.Background;
+        ForeColor = UsageStyle.Ink;
         Font = new Font("Segoe UI", 10);
         AutoScroll = true;
         Padding = new Padding(30, 24, 30, 24);
@@ -46,7 +46,9 @@ internal sealed class SettingsPage : UserControl
         void SaveUsage()
         {
             if (loading) return;
-            var proposed = new UsagePreferences { Providers = enabled.ToDictionary(x => x.Key, x => x.Value.Checked),
+            var choices = new Dictionary<string, bool>(usageSettings.Providers);
+            foreach (var (id, check) in enabled) choices[id] = check.Checked;
+            var proposed = new UsagePreferences { Providers = choices,
                 LowAlerts = lowAlerts.Checked, ResetAlerts = resetAlerts.Checked, UsedThreshold = 100 - (int)threshold.Value };
             try { saveUsage(proposed); usageSettings = proposed; }
             catch (Exception ex)
@@ -78,12 +80,12 @@ internal sealed class SettingsPage : UserControl
             AutoSize = true, MaximumSize = new Size(680, 0), ForeColor = UsageStyle.Muted, Margin = new Padding(0, 8, 0, 4) });
         stack.Controls.Add(usagePanel);
         stack.Controls.Add(new Label { Text = "App content zoom", AutoSize = true, Font = new Font("Segoe UI Semibold", 24), Margin = new Padding(0, 0, 0, 10) });
-        stack.Controls.Add(new Label { Text = "Choose a size for each AI. Changes are saved automatically.\nApply & open previews the selected level in that app.", UseMnemonic = false, AutoSize = true, MaximumSize = new Size(680, 0), ForeColor = Color.FromArgb(151, 160, 172), Margin = new Padding(0, 0, 0, 22) });
-        foreach (var app in AppEntry.All)
+        stack.Controls.Add(new Label { Text = "Choose a size for each AI. Changes are saved automatically.\nApply & open previews the selected level in that app.", UseMnemonic = false, AutoSize = true, MaximumSize = new Size(680, 0), ForeColor = UsageStyle.Muted, Margin = new Padding(0, 0, 0, 22) });
+        foreach (var app in apps.Where(a => ZoomLevels.Supports(a.Key)))
         {
-            var card = new Panel { Size = new Size(680, 116), BackColor = Color.FromArgb(26, 30, 36), Margin = new Padding(0, 0, 0, 14) };
+            var card = new Panel { Size = new Size(680, 116), BackColor = UsageStyle.Surface, Margin = new Padding(0, 0, 0, 14) };
             card.Controls.Add(new Label { Text = app.Name, Location = new Point(18, 14), Size = new Size(300, 26), Font = new Font("Segoe UI Semibold", 13), ForeColor = app.Accent });
-            card.Controls.Add(new Label { Text = app.Key == "openai" ? "Shared by ChatGPT, Codex and Dot" : app.Description, Location = new Point(18, 42), Size = new Size(330, 22), ForeColor = Color.FromArgb(151, 160, 172) });
+            card.Controls.Add(new Label { Text = app.Key == "openai" ? "Shared by ChatGPT, Codex and Dot" : app.Description, Location = new Point(18, 42), Size = new Size(330, 22), ForeColor = UsageStyle.Muted });
             var picker = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, IntegralHeight = false, DropDownHeight = 200, Location = new Point(18, 74), Width = 190, AccessibleName = app.Name + " zoom ratio" };
             picker.Items.Add(new Choice(null));
             foreach (int value in ZoomLevels.For(app.Key)) picker.Items.Add(new Choice(value));
@@ -115,7 +117,7 @@ internal sealed class SettingsPage : UserControl
             card.Controls.Add(apply);
             stack.Controls.Add(card);
         }
-        stack.Controls.Add(new Label { Text = "Keep current zoom leaves an app's existing size alone.\nIn OpenAI, zoom follows the focused view; click the chat area first if a browser pane is active.", AutoSize = true, MaximumSize = new Size(680, 0), ForeColor = Color.FromArgb(151, 160, 172), Margin = new Padding(0, 6, 0, 10) });
+        stack.Controls.Add(new Label { Text = "Keep current zoom leaves an app's existing size alone.\nIn OpenAI, zoom follows the focused view; click the chat area first if a browser pane is active.", AutoSize = true, MaximumSize = new Size(680, 0), ForeColor = UsageStyle.Muted, Margin = new Padding(0, 6, 0, 10) });
         Controls.Add(stack);
         // Runtime-created pages need their design DPI after Font and children
         // have been initialized, just like the main hub form.
@@ -124,8 +126,8 @@ internal sealed class SettingsPage : UserControl
     }
     private static Button Button(string text, Point location, Size size)
     {
-        var button = new Button { Text = text, UseMnemonic = false, Location = location, Size = size, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(40, 48, 56), ForeColor = Color.FromArgb(236, 240, 244), Cursor = Cursors.Hand };
-        button.FlatAppearance.BorderColor = Color.FromArgb(69, 82, 92);
+        var button = new Button { Text = text, UseMnemonic = false, Location = location, Size = size, FlatStyle = FlatStyle.Flat, BackColor = UsageStyle.Surface, ForeColor = UsageStyle.Ink, Cursor = Cursors.Hand };
+        button.FlatAppearance.BorderColor = UsageStyle.Line;
         return button;
     }
 }

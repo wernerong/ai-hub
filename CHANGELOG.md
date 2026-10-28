@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-10-28
+
+- Discover installed or open AI apps instead of showing a fixed provider list; keep hidden hosted windows connected.
+- Add a window picker and persistent custom connections for other desktop AI apps and dedicated browser windows.
+- Resolve installed Windows launchers on each user's machine and provide fallback icons for additional apps.
+- Redesign usage monitoring with a dark HUD, cyan remaining-allowance rings, amber warnings and responsive cards.
+- Show only available, enabled usage readers; support empty and single-monitor layouts without losing hidden preferences.
+- Preserve stale and unavailable readings, product-specific usage scope, window restoration and automatic public-release updates.
+- Add deterministic discovery, connection persistence, browser matching, layout and icon checks to Windows validation.
+
 ## 0.3.1 — 2026-10-28
 
 - Keep the selected AI app visible when returning to AI Hub from another window, without another sidebar click.

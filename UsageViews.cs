@@ -1,214 +1,242 @@
 using AIHub.Usage;
+using System.Drawing.Drawing2D;
 
 namespace AIHub;
 
 internal static class UsageStyle
 {
-    internal static readonly Color Background = Color.FromArgb(19, 22, 27), Surface = Color.FromArgb(26, 30, 36),
-        Ink = Color.FromArgb(236, 240, 244), Muted = Color.FromArgb(151, 160, 172),
-        Good = Color.FromArgb(121, 201, 179), Warning = Color.FromArgb(239, 188, 100), Low = Color.FromArgb(245, 130, 139);
+    internal static readonly Color Background = Color.FromArgb(7, 13, 23), Surface = Color.FromArgb(12, 23, 37),
+        Ink = Color.FromArgb(228, 244, 255), Muted = Color.FromArgb(139, 165, 185), Line = Color.FromArgb(34, 63, 83),
+        Good = Color.FromArgb(76, 222, 237), Warning = Color.FromArgb(255, 193, 104), Low = Color.FromArgb(255, 117, 144);
     internal static Color MeterColor(double? used) => used >= 90 ? Low : used >= 75 ? Warning : Good;
-    internal static Bitmap Icon(string key)
+    internal static Bitmap Icon(string key, string? executable = null)
     {
-        using var stream = typeof(AppInfo).Assembly.GetManifestResourceStream($"AIHub.Assets.Providers.{key}.png")!;
-        using var source = Image.FromStream(stream);
-        return new Bitmap(source);
+        using var stream = typeof(AppInfo).Assembly.GetManifestResourceStream($"AIHub.Assets.Providers.{key}.png");
+        if (stream is not null) { using var source = Image.FromStream(stream); return new Bitmap(source); }
+        try { if (executable is not null && File.Exists(executable)) { using var icon = System.Drawing.Icon.ExtractAssociatedIcon(executable); if (icon is not null) return icon.ToBitmap(); } }
+        catch (Exception ex) when (ex is IOException or ArgumentException or System.ComponentModel.Win32Exception) { }
+        var bitmap = new Bitmap(64, 64);
+        using var g = Graphics.FromImage(bitmap); g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(Good, 2); g.DrawPolygon(pen, [new(32, 4), new(56, 18), new(56, 46), new(32, 60), new(8, 46), new(8, 18)]);
+        Text(g, key.StartsWith("custom-") ? "+" : key[..1].ToUpperInvariant(), 23, Ink, new(0, 10, 64, 44), true);
+        return bitmap;
     }
     internal static Button Button(string text, Action action)
     {
-        var button = new Button { Text = text, UseMnemonic = false, AutoSize = true, MinimumSize = new Size(100, 34),
-            FlatStyle = FlatStyle.Flat, BackColor = Surface, ForeColor = Ink, Cursor = Cursors.Hand, Padding = new Padding(8, 2, 8, 2) };
-        button.FlatAppearance.BorderColor = Color.FromArgb(57, 64, 73);
-        button.Click += (_, _) => action();
-        return button;
+        var button = new Button { Text = text, UseMnemonic = false, AutoSize = false, Size = new Size(180, 36),
+            FlatStyle = FlatStyle.Flat, BackColor = Surface, ForeColor = Ink, Cursor = Cursors.Hand, Padding = new Padding(10, 3, 10, 3) };
+        button.FlatAppearance.BorderColor = Line; button.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 44, 61);
+        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(27, 63, 80);
+        button.Click += (_, _) => action(); return button;
     }
+    internal static void Text(Graphics g, string text, float size, Color color, RectangleF bounds, bool center = false, bool bold = false, bool wrap = false)
+    {
+        using var font = new Font(bold ? "Segoe UI Semibold" : "Segoe UI", size, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var brush = new SolidBrush(color);
+        using var format = new StringFormat { Alignment = center ? StringAlignment.Center : StringAlignment.Near,
+            LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter,
+            FormatFlags = wrap ? 0 : StringFormatFlags.NoWrap };
+        g.DrawString(text, font, brush, bounds, format);
+    }
+    internal static void Ring(Graphics g, RectangleF bounds, double? used, Color color, bool ticks = true)
+    {
+        using var track = new Pen(Line, 5); g.DrawArc(track, bounds, 135, 270);
+        if (used is { } value)
+        {
+            float sweep = (float)(270 * Math.Clamp(100 - value, 0, 100) / 100);
+            if (sweep > 0)
+            {
+                using var glow = new Pen(Color.FromArgb(22, color), 14); g.DrawArc(glow, bounds, 135, sweep);
+                using var light = new Pen(color, 5) { StartCap = LineCap.Round, EndCap = LineCap.Round }; g.DrawArc(light, bounds, 135, sweep);
+            }
+        }
+        if (!ticks) return;
+        float cx = bounds.X + bounds.Width / 2, cy = bounds.Y + bounds.Height / 2, radius = bounds.Width / 2 + 10;
+        using var tick = new Pen(Line, 1);
+        for (int i = 0; i <= 36; i++)
+        {
+            double a = (135 + i * 7.5) * Math.PI / 180;
+            float length = i % 3 == 0 ? 6 : 3;
+            g.DrawLine(tick, cx + (float)Math.Cos(a) * radius, cy + (float)Math.Sin(a) * radius,
+                cx + (float)Math.Cos(a) * (radius + length), cy + (float)Math.Sin(a) * (radius + length));
+        }
+        using var orbit = new Pen(Color.FromArgb(40, color), 1); var inner = bounds; inner.Inflate(-9, -9); g.DrawArc(orbit, inner, 145, 250);
+    }
+    internal static string Health(UsageState state) => !state.Enabled ? "OFFLINE" : state.Reading is null
+        ? state.Refreshing ? "CONNECTING" : "UNAVAILABLE" : state.IsStale(DateTimeOffset.Now) ? "STALE DATA" : state.Refreshing ? "REFRESHING" : "CONNECTED";
 }
 
 internal sealed class UsageChip : Button
 {
-    private readonly Bitmap icon;
     private readonly UsageProvider provider;
     private UsageState state;
-    private readonly ToolTip hint;
+    private readonly ToolTip hint = new() { InitialDelay = 300, AutoPopDelay = 12000 };
     internal UsageChip(UsageProvider provider, Action open)
     {
-        this.provider = provider;
-        state = new(provider.Id, true);
-        icon = UsageStyle.Icon(provider.AppKey);
-        Dock = DockStyle.Fill; Margin = Padding.Empty;
-        FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0;
-        FlatAppearance.MouseOverBackColor = Color.FromArgb(47, 55, 65);
-        BackColor = UsageStyle.Surface; ForeColor = UsageStyle.Ink;
-        Font = new Font("Segoe UI", 9); Cursor = Cursors.Hand;
-        SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
-        hint = new ToolTip { InitialDelay = 300, AutoPopDelay = 12000 };
+        this.provider = provider; state = new(provider.Id, true);
+        Dock = DockStyle.Fill; Margin = Padding.Empty; FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0;
+        BackColor = UsageStyle.Surface; ForeColor = UsageStyle.Ink; Cursor = Cursors.Hand;
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
         Click += (_, _) => open();
     }
     internal void Update(UsageState value)
     {
         state = value;
-        var quota = UsageDisplay.Primary(state.Reading);
-        string valueText = !state.Enabled ? "Off" : state.Reading is null ? state.Refreshing ? "Connecting…" : "Unavailable"
-            : UsageDisplay.Remaining(quota) + " · " + UsageDisplay.WindowLabel(quota) + (state.IsStale(DateTimeOffset.Now) ? " · stale" : "");
-        AccessibleName = provider.Name + ": " + valueText + ". Open usage overview.";
+        AccessibleName = provider.Name + ": " + UsageDisplay.Remaining(UsageDisplay.Primary(state.Reading)) + ". " + UsageStyle.Health(state) + ". Open usage overview.";
         AccessibleDescription = provider.Scope;
-        hint.SetToolTip(this, provider.Scope + "\n" + (state.Error ?? UsageDisplay.ResetText(quota?.Reset, DateTimeOffset.Now)) +
-            (state.Reading is { } reading ? $"\nLast successful update: {reading.Fetched.LocalDateTime:g}" : "\n" + provider.ConnectionHelp));
+        hint.SetToolTip(this, provider.Scope + "\n" + (state.Error ?? UsageDisplay.ResetText(UsageDisplay.Primary(state.Reading)?.Reset, DateTimeOffset.Now)));
         Invalidate();
     }
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
-        int pad = LogicalToDeviceUnits(10), size = LogicalToDeviceUnits(17), gap = LogicalToDeviceUnits(7);
-        e.Graphics.DrawImage(icon, new Rectangle(pad, (Height - size) / 2, size, size));
-        var quota = UsageDisplay.Primary(state.Reading);
-        string detail = !state.Enabled ? "Off" : state.Reading is null ? state.Refreshing ? "Connecting…" : "Unavailable"
-            : UsageDisplay.Remaining(quota) + " · " + UsageDisplay.WindowLabel(quota) + (state.IsStale(DateTimeOffset.Now) ? " · stale" : "");
-        int meterWidth = Width >= LogicalToDeviceUnits(270) && state.Enabled && quota?.Used is not null ? LogicalToDeviceUnits(30) : 0;
-        var textBounds = new Rectangle(pad + size + gap, 0, Math.Max(0, Width - pad * 2 - size - gap - meterWidth - (meterWidth > 0 ? gap : 0)), Height);
-        TextRenderer.DrawText(e.Graphics, provider.Name + "  " + detail, Font, textBounds,
-            !state.Enabled ? UsageStyle.Muted : state.IsStale(DateTimeOffset.Now) ? UsageStyle.Warning : ForeColor,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
-        if (meterWidth > 0)
-        {
-            var bar = new Rectangle(Width - pad - meterWidth, (Height - LogicalToDeviceUnits(4)) / 2, meterWidth, LogicalToDeviceUnits(4));
-            using var track = new SolidBrush(Color.FromArgb(57, 64, 73)); e.Graphics.FillRectangle(track, bar);
-            bar.Width = (int)Math.Round(bar.Width * Math.Clamp(100 - quota!.Used!.Value, 0, 100) / 100);
-            using var fill = new SolidBrush(state.IsStale(DateTimeOffset.Now) ? UsageStyle.Muted : UsageStyle.MeterColor(quota.Used));
-            e.Graphics.FillRectangle(fill, bar);
-        }
+        var g = e.Graphics; g.Clear(BackColor); g.SmoothingMode = SmoothingMode.AntiAlias;
+        float scale = DeviceDpi / 96f; g.ScaleTransform(scale, scale); float w = Width / scale, h = Height / scale;
+        var quota = UsageDisplay.Primary(state.Reading); bool stale = state.IsStale(DateTimeOffset.Now);
+        Color color = stale ? UsageStyle.Warning : UsageStyle.MeterColor(quota?.Used);
+        using var line = new Pen(UsageStyle.Line); g.DrawLine(line, 0, 0, w, 0); g.DrawLine(line, w - 1, 12, w - 1, h - 12);
+        UsageStyle.Ring(g, new(17, (h - 24) / 2, 24, 24), quota?.Used, color, false);
+        UsageStyle.Text(g, provider.Name.ToUpperInvariant(), 10, UsageStyle.Muted, new(54, 7, w - 64, 17), bold: true);
+        string value = quota?.Used is not null ? UsageDisplay.Remaining(quota) + "  /  " + UsageDisplay.WindowLabel(quota) : state.Refreshing ? "Connecting…" : "Unavailable";
+        UsageStyle.Text(g, value + (stale ? " · stale" : ""), 13, quota?.Used is null ? UsageStyle.Muted : color, new(54, 24, w - 64, 22));
+        if (Focused) { using var focus = new Pen(UsageStyle.Good); g.DrawRectangle(focus, 2, 2, w - 5, h - 5); }
     }
-    protected override void Dispose(bool disposing) { if (disposing) { icon.Dispose(); hint.Dispose(); } base.Dispose(disposing); }
+    protected override void Dispose(bool disposing) { if (disposing) hint.Dispose(); base.Dispose(disposing); }
 }
 
 internal sealed class UsageStrip : TableLayoutPanel
 {
-    private readonly Dictionary<string, UsageChip> chips = new();
+    private readonly Dictionary<string, UsageChip> chips = [];
+    private readonly Action open;
     internal UsageStrip(UsageProvider[] providers, Action open)
     {
-        Dock = DockStyle.Bottom; Height = 36; BackColor = UsageStyle.Surface; Margin = Padding.Empty;
-        ColumnCount = providers.Length; RowCount = 1; RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        this.open = open; Dock = DockStyle.Bottom; Height = 56; BackColor = UsageStyle.Surface; Margin = Padding.Empty;
+        RowCount = 1; RowStyles.Add(new RowStyle(SizeType.Percent, 100)); Configure(providers);
+    }
+    internal void Configure(UsageProvider[] providers)
+    {
+        if (chips.Keys.SequenceEqual(providers.Select(p => p.Id))) { Visible = providers.Length > 0; return; }
+        SuspendLayout(); foreach (var chip in chips.Values) chip.Dispose(); chips.Clear(); ColumnStyles.Clear();
+        ColumnCount = Math.Max(1, providers.Length);
         foreach (var provider in providers)
         {
             ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / providers.Length));
-            var chip = new UsageChip(provider, open); chips.Add(provider.Id, chip);
-            Controls.Add(chip, chips.Count - 1, 0);
+            var chip = new UsageChip(provider, open); chips.Add(provider.Id, chip); Controls.Add(chip, chips.Count - 1, 0);
         }
+        Visible = providers.Length > 0; ResumeLayout();
     }
-    internal void Update(UsageState[] states) { foreach (var state in states) chips[state.Id].Update(state); }
+    internal void Update(UsageState[] states) { foreach (var state in states) if (chips.TryGetValue(state.Id, out var chip)) chip.Update(state); }
 }
 
-internal sealed class UsageBar : Control
-{
-    internal double? Used;
-    internal bool Stale;
-    internal UsageBar() { Height = 6; SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true); }
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        using var track = new SolidBrush(Color.FromArgb(57, 64, 73)); e.Graphics.FillRectangle(track, ClientRectangle);
-        if (Used is not { } used) return;
-        using var fill = new SolidBrush(Stale ? UsageStyle.Muted : UsageStyle.MeterColor(used));
-        e.Graphics.FillRectangle(fill, 0, 0, (float)(Width * Math.Clamp(100 - used, 0, 100) / 100), Height);
-    }
-}
-
-internal sealed class UsageCard : Panel
+internal sealed class UsageCard : Control
 {
     private readonly UsageProvider provider;
-    private readonly PictureBox picture;
-    private readonly Label scope, health, balance, resets, error;
-    private readonly (Label Value, UsageBar Bar, Label Reset)[] quotas;
+    private readonly Bitmap icon;
+    private readonly ToolTip hint = new() { InitialDelay = 500, AutoPopDelay = 15000 };
+    private UsageState state;
     internal UsageCard(UsageProvider provider)
     {
-        this.provider = provider;
-        BackColor = UsageStyle.Surface; ForeColor = UsageStyle.Ink; Font = new Font("Segoe UI", 10);
-        Size = new Size(280, 400); Margin = new Padding(0, 0, 14, 14);
-        picture = new PictureBox { Image = UsageStyle.Icon(provider.AppKey), Location = new Point(16, 18), Size = new Size(28, 28), SizeMode = PictureBoxSizeMode.Zoom };
-        Controls.Add(picture);
-        Controls.Add(new Label { Text = provider.Name, Location = new Point(54, 16), Size = new Size(200, 24), Font = new Font("Segoe UI Semibold", 13) });
-        scope = Label(provider.Scope, 16, 56, 248, 40, UsageStyle.Muted);
-        health = Label("Connecting…", 16, 98, 248, 24, UsageStyle.Muted);
-        quotas = Enumerable.Range(0, provider.Id == "codex" ? 2 : 1).Select(index =>
-        {
-            int y = 124 + index * 64;
-            var value = Label("", 16, y, 248, 22, UsageStyle.Ink);
-            var bar = new UsageBar { Location = new Point(16, y + 27), Size = new Size(248, 6), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-            Controls.Add(bar);
-            return (value, bar, Label("", 16, y + 39, 248, 24, UsageStyle.Muted));
-        }).ToArray();
-        int after = 124 + quotas.Length * 64;
-        balance = Label("", 16, after, 248, 28, UsageStyle.Ink);
-        resets = Label("", 16, after + 30, 248, 24, UsageStyle.Muted);
-        error = Label("", 16, after + 60, 248, 64, UsageStyle.Muted);
-        Height = after + 136;
+        this.provider = provider; state = new(provider.Id, true); icon = UsageStyle.Icon(provider.AppKey);
+        Size = new Size(300, 490); BackColor = UsageStyle.Surface; Margin = new Padding(0, 0, 16, 16);
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        AccessibleRole = AccessibleRole.Grouping;
     }
-    private Label Label(string text, int x, int y, int width, int height, Color color)
+    internal void Update(UsageState value)
     {
-        var label = new Label { Text = text, UseMnemonic = false, Location = new Point(x, y), Size = new Size(width, height), ForeColor = color,
-            Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right };
-        Controls.Add(label); return label;
+        state = value;
+        Height = LogicalToDeviceUnits(330 + Math.Max(1, state.Reading?.Quotas.Length ?? 0) * 52);
+        AccessibleName = provider.Name + " usage. " + UsageStyle.Health(state) + ". " + UsageDisplay.Remaining(UsageDisplay.Primary(state.Reading));
+        AccessibleDescription = provider.Scope + ". " + (state.Error ?? string.Join(". ", state.Reading?.Quotas.Select(q => q.Label + ": " + UsageDisplay.Remaining(q) + ", " + UsageDisplay.ResetText(q.Reset, DateTimeOffset.Now)) ?? []));
+        hint.SetToolTip(this, AccessibleDescription);
+        Invalidate();
     }
-    internal void Update(UsageState state)
+    protected override void OnPaint(PaintEventArgs e)
     {
-        var now = DateTimeOffset.Now;
-        bool stale = state.IsStale(now);
-        health.Text = !state.Enabled ? "Monitoring off" : state.Reading is null ? state.Refreshing ? "Connecting…" : "Unavailable"
-            : (stale ? "Stale · " : "Updated · ") + state.Reading.Fetched.LocalDateTime.ToString("HH:mm:ss") + (state.Refreshing ? " · refreshing" : "");
-        health.ForeColor = !state.Enabled ? UsageStyle.Muted : stale || state.Error is not null ? UsageStyle.Warning : UsageStyle.Good;
-        for (int i = 0; i < quotas.Length; i++)
+        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; float scale = DeviceDpi / 96f; g.ScaleTransform(scale, scale);
+        float w = Width / scale, h = Height / scale;
+        using var bg = new LinearGradientBrush(new RectangleF(0, 0, w, h), Color.FromArgb(15, 30, 46), UsageStyle.Surface, 90f);
+        g.FillRectangle(bg, 0, 0, w, h);
+        using var border = new Pen(UsageStyle.Line); g.DrawRectangle(border, .5f, .5f, w - 1, h - 1);
+        bool stale = state.IsStale(DateTimeOffset.Now); var quota = UsageDisplay.Primary(state.Reading);
+        var color = stale ? UsageStyle.Warning : UsageStyle.MeterColor(quota?.Used);
+        using var accent = new Pen(color, 2); g.DrawLine(accent, 0, 18, 0, 0); g.DrawLine(accent, 0, 0, 32, 0);
+        g.DrawLine(accent, w - 32, h - 1, w - 1, h - 1); g.DrawLine(accent, w - 1, h - 1, w - 1, h - 18);
+        g.DrawImage(icon, new RectangleF(20, 21, 27, 27));
+        UsageStyle.Text(g, provider.Name, 19, UsageStyle.Ink, new(58, 15, w - 78, 29), bold: true);
+        UsageStyle.Text(g, UsageStyle.Health(state), 9, state.Reading is null || stale ? UsageStyle.Warning : color, new(59, 44, w - 79, 17), bold: true);
+        UsageStyle.Text(g, provider.Scope, 11, UsageStyle.Muted, new(20, 68, w - 40, 36), wrap: true);
+        const float diameter = 124; var ring = new RectangleF((w - diameter) / 2, 112, diameter, diameter);
+        UsageStyle.Ring(g, ring, quota?.Used, color);
+        UsageStyle.Text(g, quota?.Used is { } used ? $"{Math.Clamp(100 - used, 0, 100):0}%" : "—", 36, quota?.Used is null ? UsageStyle.Muted : UsageStyle.Ink, new(20, 139, w - 40, 52), true, true);
+        UsageStyle.Text(g, quota?.Used is null ? "NO READING" : "REMAINING", 9, color, new(20, 190, w - 40, 18), true, true);
+        UsageStyle.Text(g, quota?.Label ?? "Awaiting provider", 11, UsageStyle.Muted, new(20, 226, w - 40, 25), true);
+        float y = 265;
+        foreach (var q in state.Reading?.Quotas ?? [new Quota("Allowance", null, null)])
         {
-            var q = state.Enabled && state.Reading is { } r && i < r.Quotas.Length ? r.Quotas[i] : null;
-            quotas[i].Value.Text = (q?.Label ?? (provider.Id == "codex" ? i == 0 ? "5 hours" : "Weekly" : "Weekly")) + "   ·   " + (state.Enabled ? UsageDisplay.Remaining(q) : "Off");
-            quotas[i].Bar.Used = q?.Used; quotas[i].Bar.Stale = stale; quotas[i].Bar.Invalidate();
-            quotas[i].Reset.Text = q is null ? "" : UsageDisplay.ResetText(q.Reset, now);
+            UsageStyle.Text(g, q.Label, 12, UsageStyle.Ink, new(20, y, w - 144, 20), bold: true);
+            UsageStyle.Text(g, UsageDisplay.Remaining(q), 12, q.Used is null ? UsageStyle.Muted : color, new(w - 130, y, 110, 20), center: true);
+            using var track = new SolidBrush(UsageStyle.Line); g.FillRectangle(track, 20, y + 23, w - 40, 3);
+            if (q.Used is { } amount) { using var fill = new SolidBrush(stale ? UsageStyle.Warning : UsageStyle.MeterColor(amount)); g.FillRectangle(fill, 20, y + 23, (w - 40) * (float)Math.Clamp(100 - amount, 0, 100) / 100, 3); }
+            UsageStyle.Text(g, q.Reset is null && state.Reading is null ? "Waiting for a successful connection" : UsageDisplay.ResetText(q.Reset, DateTimeOffset.Now), 10, UsageStyle.Muted, new(20, y + 29, w - 40, 20));
+            y += 52;
         }
-        balance.Text = state.Enabled ? state.Reading?.Balance ?? "" : "";
-        resets.Text = state.Enabled && state.Reading?.FreeResets is { } available ? $"Free resets available: {available}" : "";
-        error.Text = !state.Enabled ? "Enable this provider in Settings." : state.Error ??
-            (state.Reading is null ? provider.ConnectionHelp : string.Join("\n", state.Reading.Quotas.Where(q => q.Note is not null).Select(q => q.Note)));
-        AccessibleName = provider.Name + " usage";
+        g.DrawLine(border, 20, y + 1, w - 20, y + 1);
+        string detail = state.Error ?? (state.Reading is null ? provider.ConnectionHelp : string.Join(" · ", new[] { state.Reading.Balance,
+            state.Reading.FreeResets is { } free ? $"{free} free resets" : null }.Concat(state.Reading.Quotas.Select(q => q.Note)).Where(t => !string.IsNullOrWhiteSpace(t))));
+        UsageStyle.Text(g, detail, 11, state.Error is null ? UsageStyle.Muted : UsageStyle.Warning, new(20, y + 6, w - 40, 35), wrap: true);
+        UsageStyle.Text(g, state.Reading is { } reading ? "LAST SYNC  " + reading.Fetched.LocalDateTime.ToString("HH:mm:ss") : "AWAITING SIGNAL", 9, UsageStyle.Muted, new(20, h - 22, w - 40, 18), bold: true);
     }
-    protected override void Dispose(bool disposing) { if (disposing) picture.Image?.Dispose(); base.Dispose(disposing); }
+    protected override void Dispose(bool disposing) { if (disposing) { icon.Dispose(); hint.Dispose(); } base.Dispose(disposing); }
 }
 
 internal sealed class UsagePage : UserControl
 {
-    private readonly TableLayoutPanel cards = new() { AutoSize = true, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty };
-    private readonly Dictionary<string, UsageCard> views = new();
+    private readonly FlowLayoutPanel cards = new() { AutoSize = true, Dock = DockStyle.Top, Margin = Padding.Empty, WrapContents = true };
+    private readonly Dictionary<string, UsageCard> views = [];
     private readonly Button refresh;
+    private readonly Label empty = new() { Text = "No usage monitors connected.\nAvailable monitors appear here when their apps or CLI logins are detected.\nConnect an AI from the sidebar to bring its window into your workspace.", AutoSize = true, ForeColor = UsageStyle.Muted, Margin = new Padding(0, 22, 0, 26) };
+    private readonly Label summary = new() { AutoSize = true, ForeColor = UsageStyle.Good, Margin = new Padding(0, 4, 0, 12) };
     internal UsagePage(UsageProvider[] providers, Action refresh, Action back, Action settings)
     {
         AutoScaleMode = AutoScaleMode.Dpi; AutoScaleDimensions = new SizeF(96, 96);
-        Dock = DockStyle.Fill; BackColor = UsageStyle.Background; ForeColor = UsageStyle.Ink;
-        Font = new Font("Segoe UI", 10); AutoScroll = true; Padding = new Padding(24);
-        var stack = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 5 };
+        Dock = DockStyle.Fill; BackColor = UsageStyle.Background; ForeColor = UsageStyle.Ink; Font = new Font("Segoe UI", 10); AutoScroll = true; Padding = new Padding(28);
+        var stack = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = Padding.Empty };
         stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Margin = new Padding(0, 0, 0, 14), WrapContents = true };
-        toolbar.Controls.Add(new Label { Text = "Usage", AutoSize = true, Font = new Font("Segoe UI Semibold", 24), Margin = new Padding(0, 0, 20, 0) });
-        this.refresh = UsageStyle.Button("Refresh", refresh); toolbar.Controls.Add(this.refresh);
-        toolbar.Controls.Add(UsageStyle.Button("Connections & alerts", settings));
-        toolbar.Controls.Add(UsageStyle.Button("Back to workspace", back));
-        stack.Controls.Add(toolbar, 0, 0);
-        stack.Controls.Add(new Label { AutoSize = true, Text = "Remaining allowance · refreshes every minute · stale readings keep their last timestamp",
-            ForeColor = UsageStyle.Muted, Margin = new Padding(0, 0, 0, 18) }, 0, 1);
-        cards.Dock = DockStyle.Top;
-        foreach (var provider in providers)
+        stack.Controls.Add(new Label { Text = "A I  H U B    /    R E S O U R C E S", AutoSize = true, Font = new Font("Segoe UI Semibold", 8), ForeColor = UsageStyle.Good, Margin = new Padding(0, 0, 0, 7) });
+        stack.Controls.Add(new Label { Text = "Usage command center", AutoSize = true, Font = new Font("Segoe UI Semibold", 26), Margin = new Padding(0, 0, 0, 5) });
+        stack.Controls.Add(summary);
+        var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Margin = new Padding(0, 0, 0, 16) };
+        this.refresh = UsageStyle.Button("Refresh readings", refresh); toolbar.Controls.Add(this.refresh);
+        toolbar.Controls.Add(UsageStyle.Button("Monitors & alerts", settings)); toolbar.Controls.Add(UsageStyle.Button("Back to workspace", back));
+        stack.Controls.Add(toolbar); stack.Controls.Add(cards); stack.Controls.Add(empty);
+        stack.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(900, 0), Text = "Each monitor covers the product named on its card. ChatGPT, Dot and Grok web limits are separate.\nUnknown readings stay unavailable; stale readings retain their last successful sync time.", ForeColor = UsageStyle.Muted, Font = new Font("Segoe UI", 9), Margin = new Padding(0, 6, 0, 18) });
+        Controls.Add(stack); cards.SizeChanged += (_, _) => ArrangeCards();
+        Configure(providers); AutoScaleDimensions = new SizeF(96, 96); PerformAutoScale();
+    }
+    internal void Configure(UsageProvider[] providers)
+    {
+        summary.Text = $"{providers.Length:00} MONITORS  /  REMAINING ALLOWANCE  /  60s REFRESH";
+        if (views.Keys.SequenceEqual(providers.Select(p => p.Id))) { empty.Visible = providers.Length == 0; return; }
+        cards.SuspendLayout(); foreach (var view in views.Values) view.Dispose(); views.Clear();
+        foreach (var provider in providers) { var card = new UsageCard(provider); views.Add(provider.Id, card); cards.Controls.Add(card); }
+        empty.Visible = providers.Length == 0;
+        cards.ResumeLayout(); ArrangeCards();
+    }
+    private void ArrangeCards()
+    {
+        if (views.Count == 0) return;
+        int gap = LogicalToDeviceUnits(16), width = Math.Max(1, cards.ClientSize.Width);
+        int columns = Math.Clamp((width + gap) / LogicalToDeviceUnits(290), 1, Math.Min(3, views.Count));
+        int cardWidth = Math.Max(LogicalToDeviceUnits(250), (width - gap * (columns - 1)) / columns - 1);
+        int index = 0;
+        foreach (var card in views.Values)
         {
-            cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / providers.Length));
-            var card = new UsageCard(provider) { Dock = DockStyle.Fill };
-            views.Add(provider.Id, card); cards.Controls.Add(card, views.Count - 1, 0);
+            card.Margin = new Padding(0, 0, ++index % columns == 0 ? 0 : gap, gap);
+            if (card.Width != cardWidth) card.Width = cardWidth;
         }
-        stack.Controls.Add(cards, 0, 2);
-        stack.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(900, 0),
-            Text = "ChatGPT, Dot and Grok web limits are not covered by these readers.\nThe strip shows each provider's most constrained reported window; unavailable is never treated as zero usage.",
-            ForeColor = UsageStyle.Muted, Margin = new Padding(0, 8, 0, 12) }, 0, 3);
-        Controls.Add(stack);
-        AutoScaleDimensions = new SizeF(96, 96); PerformAutoScale();
     }
     internal void Update(UsageState[] states, bool busy)
     {
-        refresh.Enabled = !busy;
-        refresh.Text = busy ? "Refreshing…" : "Refresh";
-        foreach (var state in states) views[state.Id].Update(state);
+        refresh.Enabled = !busy; refresh.Text = busy ? "Refreshing…" : "Refresh readings";
+        foreach (var state in states) if (views.TryGetValue(state.Id, out var view)) view.Update(state);
     }
 }

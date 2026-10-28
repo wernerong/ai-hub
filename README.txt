@@ -1,4 +1,22 @@
-AI Hub 0.3.1 — Windows desktop workspace
+AI Hub 0.4.0 — Windows desktop workspace
+
+0.4.0: Your apps, discovered automatically; a new HUD usage dashboard
+Only installed or open AI apps appear in the sidebar. Built-in discovery covers
+OpenAI, Grok, Grok Bot, Claude, Gemini, Perplexity, DeepSeek, LM Studio and Msty.
+Choose + / Connect an AI for any other desktop app or dedicated browser window.
+The whole window is hosted; your AI keeps its existing login and conversations.
+Custom desktop connections remember the executable path. Custom browser
+connections also require the selected title, so reconnect if that title changes
+after closing the window. Forget saved removes a connection and restores it.
+Saved connections live in %LOCALAPPDATA%\AIHub\connections.json.
+
+The usage command center uses cyan allowance rings, amber warnings and clear
+remaining percentages. Only detected, enabled monitors appear, including when
+only one or no monitors are available. Monitoring currently supports Codex CLI,
+Grok CLI / Build and Grok Bot; connecting another app does not invent usage data.
+Missing values remain unavailable, and stale readings keep their timestamps.
+Other AI apps keep their own zoom controls. Existing OpenAI, Grok and Grok Bot
+zoom preferences, provider settings, window recovery and updates are preserved.
 
 0.3.1: Returning to AI Hub restores the selected AI app above its workspace
 without another sidebar click. Focus restoration waits for mouse presses to

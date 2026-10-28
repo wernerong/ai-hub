@@ -6,6 +6,7 @@ internal static class ZoomLevels
 {
     private static readonly int[] Browser = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
     private static readonly int[] Desktop = Enumerable.Range(5, 26).Select(n => n * 10).ToArray();
+    internal static bool Supports(string key) => key is "openai" or "grok" or "grokbot";
     internal static IReadOnlyList<int> For(string key) => key switch
     {
         "openai" or "grokbot" => Desktop,
@@ -35,7 +36,7 @@ internal sealed class ZoomSettings
             if (File.Exists(path))
             {
                 var saved = JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(path)) ?? [];
-                foreach (var app in AppEntry.All)
+                foreach (var app in AppEntry.All.Where(a => ZoomLevels.Supports(a.Key)))
                     if (saved.TryGetValue(app.Key, out int percent) && ZoomLevels.For(app.Key).Contains(percent)) values[app.Key] = percent;
             }
         }

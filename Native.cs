@@ -136,17 +136,20 @@ internal static class Native
             {
                 using var process = Process.GetProcessById((int)pid);
                 var title = Title(window);
-                if (!string.IsNullOrWhiteSpace(title)) result.Add(new WindowInfo(window, process.Id, process.ProcessName, title));
+                string? executable = null;
+                try { executable = process.MainModule?.FileName; } catch (Exception ex) when (ex is Win32Exception or InvalidOperationException) { }
+                if (!string.IsNullOrWhiteSpace(title)) result.Add(new WindowInfo(window, process.Id, process.ProcessName, title, executable, process.StartTime.ToUniversalTime().Ticks));
             }
             catch (ArgumentException) { }
             catch (Win32Exception) { }
+            catch (InvalidOperationException) { }
             return true;
         }, 0);
         return result;
     }
 }
 
-internal sealed record WindowInfo(nint Handle, int Pid, string ProcessName, string Title)
+internal sealed record WindowInfo(nint Handle, int Pid, string ProcessName, string Title, string? Executable = null, long StartTicks = 0)
 {
     public override string ToString() => $"{Title}  —  {ProcessName}";
 }

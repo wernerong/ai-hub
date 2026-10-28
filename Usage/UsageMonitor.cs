@@ -24,6 +24,21 @@ public sealed class UsageReaders : IDisposable
             "Uses the active account in Grok Bot. Open Grok Bot and sign in, then refresh.", GrokBotProvider.Read)
     ];
     public void Dispose() => grok.Dispose();
+    public static bool IsAvailable(string id)
+    {
+        // Presence only: discovery never reads credentials or makes network requests.
+        try
+        {
+            return id switch
+            {
+                "codex" => File.Exists(CodexProvider.FindBinary()),
+                "grok" => File.Exists(Path.Combine(Environment.GetEnvironmentVariable("GROK_HOME") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".grok"), "auth.json")),
+                "grokbot" => File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Grok Bot", "sand-secrets.json")),
+                _ => false
+            };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException) { return false; }
+    }
 }
 
 // The collector is independent of any UI framework. Events can arrive on worker threads.

@@ -10,6 +10,19 @@ internal static class Program
     {
         if (args.Contains("--dpi-v1")) Application.SetHighDpiMode(HighDpiMode.PerMonitor);
         ApplicationConfiguration.Initialize();
+        if (args.Length == 2 && args[0] == "--usage-preview")
+        {
+            DiscoveryChecks.ShowPreview(args[1]); return;
+        }
+        if (args.Length == 2 && args[0] == "--discovery-diagnostics")
+        {
+            var catalog = new AppCatalog(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AIHub", "connections.json"));
+            catalog.Refresh([]).GetAwaiter().GetResult();
+            using var readers = new AIHub.Usage.UsageReaders();
+            File.WriteAllLines(args[1], catalog.Available.Select(a => $"App: {a.Key} | {a.Name} | launchable={a.LaunchTarget is not null}")
+                .Concat(readers.Providers.Select(p => $"Monitor: {p.Id} | available={AIHub.Usage.UsageReaders.IsAvailable(p.Id)}")));
+            return;
+        }
         if (args.Length == 2 && args[0] == "--activation-test")
         {
             ActivationChecks.Show(args[1]);

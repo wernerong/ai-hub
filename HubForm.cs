@@ -4,7 +4,12 @@ namespace AIHub;
 
 internal sealed class HubForm : Form
 {
-    private static readonly Color Background = Color.FromArgb(19, 22, 27), Surface = Color.FromArgb(26, 30, 36), Muted = Color.FromArgb(151, 160, 172), Ink = Color.FromArgb(236, 240, 244);
+    private static readonly Color Background = UsageStyle.Background, Surface = UsageStyle.Surface, Muted = UsageStyle.Muted, Ink = UsageStyle.Ink;
+    private readonly AppCatalog catalog;
+    private readonly FlowLayoutPanel choices = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
+    private UsageProvider[] availableMonitors = [];
+    private DateTimeOffset nextDiscovery;
+    private bool discovering;
     private readonly DockManager dock;
     private readonly ZoomSettings zoom;
     private readonly Dictionary<string, (SavedWindow Window, int Percent)> appliedZoom = [];
@@ -44,14 +49,15 @@ internal sealed class HubForm : Form
     internal HubForm(string statePath)
     {
         dock = new DockManager(statePath);
+        catalog = new AppCatalog(Path.Combine(Path.GetDirectoryName(statePath)!, "connections.json"));
         zoom = new ZoomSettings(Path.Combine(Path.GetDirectoryName(statePath)!, "zoom-settings.json"));
         usagePreferencesPath = Path.Combine(Path.GetDirectoryName(statePath)!, "usage-settings.json");
         usagePreferences = UsagePreferences.Load(usagePreferencesPath);
         updater = new AppUpdater(Path.GetDirectoryName(statePath)!, Environment.ProcessPath!);
         updateTimer.Tick += async (_, _) => await updater.CheckAsync();
-        usage = new UsageMonitor(usageReaders.Providers, usagePreferences.IsEnabled);
+        usage = new UsageMonitor(usageReaders.Providers, _ => false);
         usageAlerts = new UsageAlerts(usagePreferences.SentAlerts);
-        usageStrip = new UsageStrip(usageReaders.Providers, ShowUsage);
+        usageStrip = new UsageStrip([], ShowUsage);
         usageNotifications = new NotifyIcon { Icon = AppInfo.LoadIcon(), Text = "AI Hub usage alerts", Visible = usagePreferences.LowAlerts || usagePreferences.ResetAlerts };
         usageNotifications.BalloonTipClicked += (_, _) => { WindowState = FormWindowState.Normal; Activate(); ShowUsage(); };
         usageNotifications.DoubleClick += (_, _) => { WindowState = FormWindowState.Normal; Activate(); ShowUsage(); };
@@ -72,19 +78,13 @@ internal sealed class HubForm : Form
         var emblem = new PictureBox { Image = Icon.ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(40, 40), Location = new Point(16, 4), AccessibleName = "AI Hub icon" };
         brand.Controls.Add(emblem);
         navigationHints.SetToolTip(emblem, AppInfo.DisplayName);
-        var choices = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        foreach (var entry in AppEntry.All)
-        {
-            var button = new ProviderButton(entry, async () => await Select(entry));
-            navigationHints.SetToolTip(button, entry.Name + "\n" + entry.Description);
-            navigation[entry.Key] = button;
-            choices.Controls.Add(button);
-        }
+        RebuildNavigation();
         var version = new Label { Dock = DockStyle.Bottom, Height = 24, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Muted, Text = $"v{AppInfo.Version}", Font = new Font("Segoe UI", 8), AccessibleName = "AI Hub version " + AppInfo.Version };
         sidebar.Controls.Add(choices);
         sidebar.Controls.Add(brand);
         settingsButton = MakeButton("Settings", ShowSettings);
         settingsButton.Font = new Font("Segoe UI", 8.5f);
+        settingsButton.Padding = Padding.Empty;
         settingsButton.AccessibleName = "Settings";
         settingsButton.Dock = DockStyle.Bottom;
         settingsButton.Height = 42;
@@ -93,6 +93,7 @@ internal sealed class HubForm : Form
         sidebar.Controls.Add(version);
         usageButton = MakeButton("Usage", ShowUsage);
         usageButton.Font = new Font("Segoe UI", 8.5f);
+        usageButton.Padding = Padding.Empty;
         usageButton.AccessibleName = "Usage overview";
         usageButton.Dock = DockStyle.Bottom;
         usageButton.Height = 42;
@@ -129,6 +130,11 @@ internal sealed class HubForm : Form
         {
             if (closing) return;
             UpdateUsage();
+            if (DateTimeOffset.Now >= nextDiscovery)
+            {
+                nextDiscovery = DateTimeOffset.Now.AddSeconds(5);
+                _ = RefreshDiscovery();
+            }
             if (DateTimeOffset.Now >= nextUsageRefresh)
             {
                 nextUsageRefresh = DateTimeOffset.Now.AddSeconds(5);
@@ -154,7 +160,7 @@ internal sealed class HubForm : Form
             timer.Start();
             usageTimer.Start();
             nextUsageRefresh = DateTimeOffset.Now.AddSeconds(5);
-            _ = usage.RefreshAsync();
+            _ = RefreshDiscovery();
             updateTimer.Start();
             _ = updater.CheckAsync();
             _ = Task.Run(() => UpdateInstaller.Cleanup(Path.Combine(Path.GetDirectoryName(statePath)!, "updates")));
@@ -207,10 +213,8 @@ internal sealed class HubForm : Form
 
     private static Button MakeButton(string text, Action click)
     {
-        var button = new Button { Text = text, FlatStyle = FlatStyle.Flat, BackColor = Surface, ForeColor = Ink, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10) };
-        button.FlatAppearance.BorderColor = Color.FromArgb(57, 64, 73);
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(47, 55, 65);
-        button.Click += (_, _) => click();
+        var button = UsageStyle.Button(text, click);
+        button.AutoSize = false; button.MinimumSize = Size.Empty; button.Font = new Font("Segoe UI", 10);
         return button;
     }
 
@@ -223,7 +227,7 @@ internal sealed class HubForm : Form
         var content = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
         content.Controls.Add(new Label { AutoSize = true, Text = "A home for every AI.", Font = new Font("Segoe UI Semibold", 30), ForeColor = Ink, Margin = new Padding(0, 35, 0, 18) });
         content.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(720, 0), Text = message ?? "Bring your existing apps into one window. Switch from a conversation to a coding task or an agent without juggling your desktop.", Font = new Font("Segoe UI", 13), ForeColor = Muted, Margin = new Padding(0, 0, 0, 38) });
-        foreach (var entry in AppEntry.All)
+        foreach (var entry in catalog.Available)
         {
             var button = MakeButton(entry.Name + "     /     " + entry.Description + "     →", async () => await Select(entry));
             button.Size = new Size(660, 68);
@@ -233,7 +237,10 @@ internal sealed class HubForm : Form
             button.Margin = new Padding(0, 0, 0, 14);
             content.Controls.Add(button);
         }
-        content.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(680, 0), Text = "OpenAI includes ChatGPT, Codex and your Dot. Use their existing controls inside the OpenAI panel.\n\nPop out returns an app to its own window. Closing AI Hub restores every connected window.", Font = new Font("Segoe UI", 10), ForeColor = Muted, Margin = new Padding(0, 24, 0, 0) });
+        var connect = MakeButton("+  Connect an AI", async () => await ConnectAI());
+        connect.Size = new Size(240, 48); connect.ForeColor = UsageStyle.Good; content.Controls.Add(connect);
+        content.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(680, 0), Text = "Installed and open AI apps appear automatically. Connect any other AI through its desktop app or a dedicated browser window.\n\nYour apps keep their own accounts. Pop out returns a window to your desktop; closing AI Hub restores every connected window.", Font = new Font("Segoe UI", 10), ForeColor = Muted, Margin = new Padding(0, 24, 0, 0) });
+        if (IsHandleCreated) content.Scale(new SizeF(DeviceDpi / 96f, DeviceDpi / 96f));
         empty.Controls.Add(content);
         empty.Visible = true;
         status.Text = zoom.LoadWarning ?? $"{AppInfo.DisplayName}  ·  Uses your installed apps";
@@ -264,11 +271,11 @@ internal sealed class HubForm : Form
         {
             appliedZoom.Remove(entry.Key);
             await Select(entry);
-        }, usagePreferences, usageReaders.Providers, SaveUsagePreferences, updater, () =>
+        }, usagePreferences, availableMonitors, SaveUsagePreferences, updater, () =>
         {
             restartForUpdate = true;
             Close();
-        }));
+        }, catalog.Available));
         empty.Visible = true;
         heading.Text = "Settings   /   Updates, zoom, usage and alerts";
         detach.Enabled = false;
@@ -276,7 +283,7 @@ internal sealed class HubForm : Form
         UpdateNavigation();
     }
 
-    private async Task Select(AppEntry entry)
+    private async Task Select(AppEntry entry, WindowInfo? explicitWindow = null)
     {
         if (busy || closing) return;
         activation.Cancel();
@@ -286,7 +293,7 @@ internal sealed class HubForm : Form
             status.Text = $"Connecting {entry.Name}…";
             if (!dock.Has(entry.Key))
             {
-                var candidates = Native.Windows().Where(entry.Matches).ToList();
+                var candidates = explicitWindow is null ? Native.Windows().Where(entry.Matches).ToList() : new List<WindowInfo> { explicitWindow };
                 if (candidates.Count == 0)
                 {
                     entry.Launch();
@@ -301,6 +308,7 @@ internal sealed class HubForm : Form
                 var chosen = candidates.Count == 1 ? candidates[0] : ChooseWindow(candidates);
                 if (chosen is null) { status.Text = "No window selected."; return; }
                 await dock.Attach(entry.Key, chosen, viewport.Handle);
+                await RefreshDiscovery();
             }
             selected = entry.Key;
             page = HubPage.Workspace;
@@ -386,7 +394,7 @@ internal sealed class HubForm : Form
                     && Native.IsWindowVisible((nint)window.Handle) && dock.IsForeground(key),
                 command => Native.SendZoomChord((nint)window.Handle, command));
             appliedZoom[key] = (window, percent);
-            status.Text = $"{AppEntry.All.First(a => a.Key == key).Name}  ·  Zoom {percent}%";
+            status.Text = $"{catalog.Available.FirstOrDefault(a => a.Key == key)?.Name ?? key}  ·  Zoom {percent}%";
         }
         catch (Exception ex) { status.Text = "Zoom not applied: " + ex.Message; }
         finally { busy = false; UpdateStatusVisibility(); }
@@ -423,15 +431,15 @@ internal sealed class HubForm : Form
     {
         foreach (var (key, button) in navigation)
         {
-            button.BackColor = !pageOpen && selected == key ? Color.FromArgb(48, 64, 62) : Surface;
+            button.BackColor = !pageOpen && selected == key ? Color.FromArgb(20, 49, 65) : Surface;
             button.FlatAppearance.BorderSize = !pageOpen && selected == key ? 1 : 0;
-            button.FlatAppearance.BorderColor = !pageOpen && selected == key ? Color.FromArgb(121, 201, 179) : Color.FromArgb(57, 64, 73);
+            button.FlatAppearance.BorderColor = !pageOpen && selected == key ? UsageStyle.Good : UsageStyle.Line;
         }
         foreach (var (button, active) in new[] { (settingsButton, page == HubPage.Settings), (usageButton, page == HubPage.Usage) })
         {
-            button.BackColor = active ? Color.FromArgb(48, 64, 62) : Surface;
+            button.BackColor = active ? Color.FromArgb(20, 49, 65) : Surface;
             button.FlatAppearance.BorderSize = active ? 1 : 0;
-            button.FlatAppearance.BorderColor = active ? Color.FromArgb(121, 201, 179) : Color.FromArgb(57, 64, 73);
+            button.FlatAppearance.BorderColor = active ? UsageStyle.Good : UsageStyle.Line;
         }
     }
 
@@ -443,9 +451,9 @@ internal sealed class HubForm : Form
         dock.HideAll();
         ClearContent();
         empty.Padding = Padding.Empty;
-        usagePage = new UsagePage(usageReaders.Providers, () => _ = usage.RefreshAsync(true), async () =>
+        usagePage = new UsagePage(EnabledMonitors, () => _ = usage.RefreshAsync(true), async () =>
         {
-            if (selected is { } key) await Select(AppEntry.All.Single(a => a.Key == key));
+            if (selected is { } key && catalog.Available.FirstOrDefault(a => a.Key == key) is { } entry) await Select(entry);
             else ShowWelcome();
         }, ShowSettings);
         empty.Controls.Add(usagePage);
@@ -466,6 +474,8 @@ internal sealed class HubForm : Form
     private void UpdateUsage()
     {
         var states = usage.States;
+        usageStrip.Configure(EnabledMonitors);
+        usagePage?.Configure(EnabledMonitors);
         usageStrip.Update(states);
         usagePage?.Update(states, usage.Busy);
         int previousCount = usageAlerts.Sent.Count;
@@ -488,11 +498,89 @@ internal sealed class HubForm : Form
         proposed.SentAlerts = usageAlerts.Sent;
         proposed.Save(usagePreferencesPath);
         usagePreferences = proposed;
-        foreach (var provider in usageReaders.Providers) usage.SetEnabled(provider.Id, proposed.IsEnabled(provider.Id));
+        SetMonitorAvailability();
         pendingAlerts.Clear();
         usageNotifications.Visible = proposed.LowAlerts || proposed.ResetAlerts;
         UpdateUsage();
         _ = usage.RefreshAsync(true);
+    }
+
+    private UsageProvider[] EnabledMonitors => availableMonitors.Where(p => usagePreferences.IsEnabled(p.Id)).ToArray();
+
+    private void SetMonitorAvailability()
+    {
+        foreach (var provider in usageReaders.Providers)
+            usage.SetEnabled(provider.Id, availableMonitors.Any(p => p.Id == provider.Id) && usagePreferences.IsEnabled(provider.Id));
+    }
+
+    private async Task RefreshDiscovery(bool force = false)
+    {
+        if (discovering || closing) return;
+        discovering = true;
+        try
+        {
+            bool changed = await catalog.Refresh(dock.Windows.Where(p => p.Value.Matches()).Select(p => p.Key).ToArray(), force);
+            if (closing || IsDisposed) return;
+            availableMonitors = usageReaders.Providers.Where(p => UsageReaders.IsAvailable(p.Id)
+                || p.Id == "grokbot" && catalog.Available.Any(a => a.Key == "grokbot")).ToArray();
+            SetMonitorAvailability();
+            if (changed)
+            {
+                RebuildNavigation(); UpdateNavigation();
+                if (!pageOpen && selected is null && !busy) ShowWelcome(catalog.Warning);
+            }
+            UpdateUsage(); _ = usage.RefreshAsync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        { if (!closing) status.Text = "Could not refresh app discovery. Use Connect an AI to choose a window."; }
+        finally { discovering = false; }
+    }
+
+    private void RebuildNavigation()
+    {
+        choices.SuspendLayout();
+        foreach (Control control in choices.Controls.Cast<Control>().ToArray()) control.Dispose();
+        navigation.Clear();
+        foreach (var entry in catalog.Available)
+        {
+            var button = new ProviderButton(entry, async () => await Select(catalog.Available.FirstOrDefault(a => a.Key == entry.Key) ?? entry));
+            navigationHints.SetToolTip(button, entry.Name + "\n" + entry.Description);
+            if (IsHandleCreated) button.Scale(new SizeF(DeviceDpi / 96f, DeviceDpi / 96f));
+            navigation[entry.Key] = button; choices.Controls.Add(button);
+        }
+        var add = MakeButton("+", async () => await ConnectAI()); add.Size = new Size(72, 42); add.ForeColor = UsageStyle.Good; add.Margin = new Padding(0, 0, 0, 8);
+        add.AccessibleName = "Connect an AI"; navigationHints.SetToolTip(add, "Connect an AI · Choose an open app or browser window");
+        if (IsHandleCreated) add.Scale(new SizeF(DeviceDpi / 96f, DeviceDpi / 96f));
+        choices.Controls.Add(add); choices.ResumeLayout();
+    }
+
+    private async Task ConnectAI()
+    {
+        if (busy || closing) return;
+        activation.Cancel(); busy = true; dock.HideAll();
+        try
+        {
+            using var dialog = new ConnectionDialog(Native.Windows().Where(w => w.Pid != Environment.ProcessId
+                && w.Executable is not null && !new[] { "explorer", "ApplicationFrameHost", "ShellExperienceHost", "StartMenuExperienceHost", "TextInputHost", "SearchHost", "SystemSettings", "codex-computer-use" }.Contains(w.ProcessName, StringComparer.OrdinalIgnoreCase)).ToArray(), catalog.Connections);
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            if (dialog.ForgetKey is { } key)
+            {
+                catalog.Forget(key); dock.Detach(key); appliedZoom.Remove(key);
+                if (selected == key) { selected = null; detach.Enabled = false; ShowWelcome(); }
+                await RefreshDiscovery(true); return;
+            }
+            if (dialog.ChosenWindow is not { } chosen) return;
+            var entry = catalog.Connect(dialog.ConnectionName, chosen);
+            busy = false;
+            await Select(entry, chosen);
+        }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Connect an AI", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+        finally
+        {
+            busy = false;
+            if (selected is not null && !pageOpen) QueueSelectedPresentation(true);
+            UpdateStatusVisibility();
+        }
     }
 
     private void UpdateStatusVisibility()

@@ -2,11 +2,11 @@
 
 <img src="Assets/AIHub.png" alt="AI Hub icon" width="128" />
 
-A Windows desktop workspace for your installed OpenAI, Grok and Grok Bot apps.
-Switch between the three panels, keep existing accounts and conversations, and
-adjust each app's content zoom from Settings. The compact bottom strip monitors
-Codex, Grok CLI / Build and Grok Bot allowances. OpenAI's own controls switch
-between ChatGPT, Codex and Dot.
+A Windows desktop workspace for the AI apps you use. Installed or open AI apps
+appear in the sidebar automatically. Connect other desktop apps or dedicated
+browser windows with **Connect an AI**, keeping their existing accounts and
+conversations. A dark, cyan HUD shows available usage monitors with remaining
+allowance rings, reset countdowns and amber warnings.
 
 ## Run
 
@@ -14,7 +14,7 @@ Download the Windows x64 ZIP from [the latest public release](https://github.com
 verify it against `SHA256SUMS.txt`, and extract it. Run `Install-AIHub.ps1` in
 PowerShell to install for your Windows account with shortcuts and an entry in
 Installed apps. You can also run `AIHub.exe` from a writable folder.
-The .NET runtime is included. The AI apps must already be installed.
+The .NET runtime is included. Open or install your AI apps separately.
 
 The version stays visible in the title bar and sidebar. **Pop out** restores
 one app's original window; **Restore all** or closing the hub restores them all.
@@ -47,6 +47,32 @@ Pass `-OutputDirectory` to choose another destination. Package staging folders
 must be new so stale files cannot enter a release.
 
 ## Behavior and limits
+
+### App discovery and connections
+
+Version 0.4.0 discovers OpenAI, Grok, Grok Bot, Claude, Gemini, Perplexity,
+DeepSeek, LM Studio and Msty from Windows app registrations, Start menu
+shortcuts or matching open windows. Apps you do not have stay out of the
+sidebar. Discovery refreshes open windows every five seconds and installed
+apps every minute. Hosted windows stay available while hidden by the hub.
+
+For another AI, select **+** in the sidebar, open its app, and choose its window.
+Use a separate browser window for a website: AI Hub hosts the whole window.
+Custom desktop connections remember the executable path; custom browser
+connections remember that path and the selected title. Reconnect a browser
+window if its title changes after it closes. **Forget saved** removes a custom
+connection and restores its window. Connections are local to this Windows
+account in `%LOCALAPPDATA%\AIHub\connections.json`.
+
+App hosting and usage monitoring are separate capabilities. Usage cards appear
+only for detected, enabled readers: Codex CLI, Grok CLI / Build login and Grok
+Bot. Other AI apps can be connected without adding an unsupported usage card.
+The dashboard adapts to zero, one or several monitors. Settings preserves
+monitoring choices even while a provider is absent. Content zoom controls are
+available for the original OpenAI, Grok and Grok Bot integrations; other apps
+keep their own zoom controls.
+
+### Window behavior and usage
 
 Version 0.3.1 keeps the selected AI app visible when you return from another
 window, without requiring another sidebar click. It waits for mouse presses

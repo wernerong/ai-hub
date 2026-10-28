@@ -123,6 +123,8 @@ internal sealed class DockManager : IDisposable
         if (Native.GetParent(window.Handle) != 0) throw new InvalidOperationException("This app window already belongs to another window.");
         await EnsureGuard();
         var saved = SavedWindow.Capture(window.Handle);
+        if (saved.Pid != window.Pid || window.StartTicks != 0 && saved.StartTicks != window.StartTicks)
+            throw new InvalidOperationException("The chosen app window changed. Choose it again.");
         windows[key] = saved;
         Persist(); // Durable recovery record exists before the first window mutation.
         try
