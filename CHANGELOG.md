@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-10-29
+
+- Add a per-user native Windows Setup.exe and native uninstaller; remove the need to run PowerShell scripts when installing a release.
+- Migrate the matching legacy installation entry, preserve settings, and retain native uninstall support through automatic ZIP updates.
+- Allow any detected or custom AI to be removed from the sidebar with a right-click or the connection dialog; persist removals across discovery and restarts.
+- Restore removed apps through Add back to AI Hub without duplicating saved connections or uninstalling provider apps.
+- Display Claude's official Windows app icon and handle brief file locks when saving connection choices.
+- Validate native installation, upgrades, running-app protection and uninstall separately from the app's discovery, update and window recovery checks.
+
 ## 0.4.1 — 2026-10-28
 
 - Minimize the workspace when its taskbar button is clicked while a hosted AI is active, and restore the same AI on the next click.

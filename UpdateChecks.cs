@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
 using System.Text.Json;
+using Microsoft.Win32;
 
 namespace AIHub;
 
@@ -61,6 +62,8 @@ internal static class UpdateChecks
         Directory.CreateDirectory(installation); Directory.CreateDirectory(payload);
         foreach (var name in UpdateInstaller.PackageFiles) { File.WriteAllText(Path.Combine(installation, name), "old " + name); File.WriteAllText(Path.Combine(payload, name), "new " + name); }
         File.WriteAllText(Path.Combine(installation, "personal.txt"), "keep");
+        File.WriteAllText(Path.Combine(installation, "unins000.exe"), "native uninstaller");
+        File.WriteAllText(Path.Combine(installation, "unins000.dat"), "native uninstall log");
         bool rolledBack = false;
         try
         {
@@ -75,6 +78,31 @@ internal static class UpdateChecks
         UpdateInstaller.InstallFiles(installation, payload, Path.Combine(root, "success-backup"));
         Check(UpdateInstaller.PackageFiles.All(n => File.ReadAllText(Path.Combine(installation, n)) == "new " + n)
             && File.ReadAllText(Path.Combine(installation, "personal.txt")) == "keep", "Installation replaces only package files and preserves unrelated data");
+        Check(File.ReadAllText(Path.Combine(installation, "unins000.exe")) == "native uninstaller"
+            && File.ReadAllText(Path.Combine(installation, "unins000.dat")) == "native uninstall log", "ZIP updates preserve the native uninstaller and its log");
+        string registryTest = @"Software\AIHub\Tests\" + Guid.NewGuid().ToString("N");
+        try
+        {
+            using var registrations = Registry.CurrentUser.CreateSubKey(registryTest);
+            foreach (var name in new[] { "AIHub", "AIHub_is1" })
+            {
+                using var registration = registrations.CreateSubKey(name);
+                registration.SetValue("InstallLocation", installation + "\\");
+                registration.SetValue("DisplayVersion", "0.4.1");
+                registration.SetValue("UninstallString", "keep " + name);
+            }
+            UpdateInstaller.UpdateRegistration(registrations, installation, "0.5.0");
+            foreach (var name in new[] { "AIHub", "AIHub_is1" })
+            {
+                using var registration = registrations.OpenSubKey(name)!;
+                Check((string?)registration.GetValue("DisplayVersion") == "0.5.0"
+                    && (string?)registration.GetValue("UninstallString") == "keep " + name, "ZIP updates refresh the version without replacing uninstall commands: " + name);
+            }
+            UpdateInstaller.UpdateRegistration(registrations, installation + "-other", "99.0.0");
+            using var nativeRegistration = registrations.OpenSubKey("AIHub_is1")!;
+            Check((string?)nativeRegistration.GetValue("DisplayVersion") == "0.5.0", "Updates cannot change another installation's registration");
+        }
+        finally { Registry.CurrentUser.DeleteSubKeyTree(registryTest, false); }
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
         var handler = new TestHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Metadata("0.2.1", digest, 100)) });

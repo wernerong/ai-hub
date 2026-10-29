@@ -7,7 +7,7 @@ internal sealed class ProviderButton : Button
     private readonly Bitmap icon;
     private readonly string label;
 
-    internal ProviderButton(AppEntry entry, Action click)
+    internal ProviderButton(AppEntry entry, Action click, Action? remove = null)
     {
         label = entry.Name;
         icon = UsageStyle.Icon(entry.Key, entry.Executable);
@@ -23,6 +23,12 @@ internal sealed class ProviderButton : Button
         FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 44, 61);
         SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
         Click += (_, _) => click();
+        if (remove is not null)
+        {
+            ContextMenuStrip = new ContextMenuStrip();
+            ContextMenuStrip.Items.Add("Remove from AI Hub", null, (_, _) => remove());
+            AccessibleDescription += ". Right-click to remove from AI Hub.";
+        }
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -41,7 +47,7 @@ internal sealed class ProviderButton : Button
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) icon.Dispose();
+        if (disposing) { icon.Dispose(); ContextMenuStrip?.Dispose(); }
         base.Dispose(disposing);
     }
 }

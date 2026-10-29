@@ -119,9 +119,8 @@ internal static class UpdateInstaller
             InstallFiles(plan.InstallDirectory, payload, Path.Combine(stage, "backup"));
             try
             {
-                using var registration = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\AIHub", true);
-                if (string.Equals(registration?.GetValue("InstallLocation") as string, plan.InstallDirectory, StringComparison.OrdinalIgnoreCase))
-                    registration?.SetValue("DisplayVersion", plan.Version);
+                using var registrations = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall", true);
+                if (registrations is not null) UpdateRegistration(registrations, plan.InstallDirectory, plan.Version);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
             try { File.WriteAllText(Path.Combine(stage, ".completed"), "Installed " + plan.Version); }
@@ -138,6 +137,17 @@ internal static class UpdateInstaller
             if (plan?.Relaunch == true)
                 try { Process.Start(new ProcessStartInfo(Path.Combine(plan.InstallDirectory, "AIHub.exe")) { UseShellExecute = true }); } catch { }
             return 1;
+        }
+    }
+
+    internal static void UpdateRegistration(RegistryKey registrations, string installation, string version)
+    {
+        foreach (var name in new[] { "AIHub", "AIHub_is1" })
+        {
+            using var registration = registrations.OpenSubKey(name, true);
+            if (registration?.GetValue("InstallLocation") is string location
+                && string.Equals(location.TrimEnd('\\'), installation.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                registration.SetValue("DisplayVersion", version);
         }
     }
 

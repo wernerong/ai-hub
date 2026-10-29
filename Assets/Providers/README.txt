@@ -6,3 +6,5 @@ grokbot.png: Grok Bot Windows executable's application icon, converted to PNG.
 
 The artwork is unchanged. These marks identify the corresponding third-party
 apps and remain the property of their respective owners.
+
+claude.png: Claude Windows package 1.28929.0.0, assets/icon.png, copied unchanged on 2026-10-29.

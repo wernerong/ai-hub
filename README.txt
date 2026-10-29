@@ -1,4 +1,19 @@
-AI Hub 0.4.1 — Windows desktop workspace
+AI Hub 0.5.0 — Windows desktop workspace
+
+0.5.0: Native Windows installer and removable AI apps
+Download AIHub-v0.5.0-windows-x64-Setup.exe from the latest release and
+double-click it. Close AI Hub first if upgrading. Setup installs for your
+Windows account with shortcuts and a native Windows Installed apps uninstaller.
+No PowerShell commands, execution-policy changes or administrator access are
+needed. Settings and provider apps are preserved. The installer is unsigned,
+so Windows may still show an unknown-publisher or SmartScreen warning.
+
+Right-click any AI button and select Remove from AI Hub. Its original window
+is restored, and it stays out of the sidebar even if installed or running.
+Use + / Connect an AI to remove apps or add a removed app back. Choices persist
+in %LOCALAPPDATA%\AIHub\connections.hidden.json. App removal does not uninstall
+the AI, erase its account or change independently configured usage monitors.
+Claude now displays the icon from its official Windows app.
 
 0.4.1: Normal taskbar minimize and restore
 Click AI Hub's taskbar button while its connected AI is active to minimize the
@@ -14,7 +29,7 @@ Choose + / Connect an AI for any other desktop app or dedicated browser window.
 The whole window is hosted; your AI keeps its existing login and conversations.
 Custom desktop connections remember the executable path. Custom browser
 connections also require the selected title, so reconnect if that title changes
-after closing the window. Forget saved removes a connection and restores it.
+after closing the window. Use Remove from AI Hub to hide a saved connection.
 Saved connections live in %LOCALAPPDATA%\AIHub\connections.json.
 
 The usage command center uses cyan allowance rings, amber warnings and clear
@@ -33,9 +48,9 @@ pop out, recovery and the existing update channel.
 
 0.3.0: Public GitHub releases and automatic updates
 Download: https://github.com/wernerong/ai-hub/releases/latest
-Verify the ZIP with SHA256SUMS.txt, extract, and run Install-AIHub.ps1 in
-PowerShell for a per-user installation with shortcuts and Windows Installed
-apps registration. AIHub.exe can also run from a writable folder.
+Use Setup.exe for installation. The ZIP is retained for automatic updates and
+portable use: verify it with SHA256SUMS.txt, extract, then run AIHub.exe from a
+writable folder. Legacy PowerShell scripts remain for compatibility.
 
 Updates check published stable releases at startup and every six hours.
 The SHA-256 digest and executable version are verified before installation.

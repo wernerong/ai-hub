@@ -23,7 +23,8 @@ try {
     $output = [IO.Path]::GetFullPath($OutputDirectory)
     $zip = Join-Path $output "AIHub-v$version-windows-x64.zip"
     $checksums = Join-Path $output 'SHA256SUMS.txt'
-    $localAssets = @($zip, $checksums)
+    $setup = Join-Path $output "AIHub-v$version-windows-x64-Setup.exe"
+    $localAssets = @($setup, $zip, $checksums)
     $localInfo = @{}
     foreach ($path in $localAssets) { $localInfo[[IO.Path]::GetFileName($path)] = @{ Length = (Get-Item -LiteralPath $path).Length; Hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() } }
     git show-ref --verify --quiet ('refs/tags/' + $tag)
@@ -52,7 +53,7 @@ try {
     foreach ($path in $localAssets) {
         $name = [IO.Path]::GetFileName($path)
         $upload = 'https://uploads.github.com/repos/wernerong/ai-hub/releases/' + $release.id + '/assets?name=' + [Uri]::EscapeDataString($name)
-        $contentType = if ($name.EndsWith('.zip')) { 'application/zip' } else { 'text/plain' }
+        $contentType = if ($name.EndsWith('.zip')) { 'application/zip' } elseif ($name.EndsWith('.exe')) { 'application/octet-stream' } else { 'text/plain' }
         $asset = Invoke-RestMethod -Uri $upload -Method Post -Headers $headers -ContentType $contentType -InFile $path
         if ($asset.size -ne $localInfo[$name].Length -or $asset.digest -ne ('sha256:' + $localInfo[$name].Hash)) { throw "Uploaded asset verification failed: $name" }
     }

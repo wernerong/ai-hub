@@ -20,6 +20,7 @@ internal static class DiscoveryChecks
             && !grok.Matches(new(1, 11, "notepad", "Grok")) && !grok.Matches(new(1, 11, "chrome", "Grok Bot")), "Browser detection uses provider titles and browser identity without confusing Grok Bot");
         string path = Path.Combine(folder, "connection-test.json");
         File.Delete(path);
+        File.Delete(Path.ChangeExtension(path, "hidden.json"));
         var catalog = new AppCatalog(path);
         var native = new WindowInfo(1, 11, "ExampleAI", "Question one", Environment.ProcessPath);
         var custom = catalog.Connect("Example AI", native);
@@ -31,6 +32,18 @@ internal static class DiscoveryChecks
         Check(web.Matches(browser) && !web.Matches(browser with { Title = "An unrelated tab" }) && web.LaunchTarget is null, "Custom web connections never adopt a different browser tab or launch a bare browser");
         var reload = new AppCatalog(path);
         Check(reload.Connections.Length == 2 && reload.Connections.Single(c => c.Key == web.Key).WindowTitle == browser.Title, "Named custom connections survive reload");
+        reload.Remove("claude"); reload.Remove(custom.Key);
+        reload = new AppCatalog(path);
+        Check(reload.IsRemoved("claude") && reload.IsRemoved(custom.Key) && reload.Removed.Length == 2,
+            "Removing built-in and custom apps persists across restarts and keeps their add-back entries");
+        var removedKeys = reload.Removed.Select(a => a.Key).ToArray();
+        Check(AppCatalog.Discover([.. three, new("Claude", "claude.lnk")], [claude, native], [custom], ["claude", custom.Key], removedKeys)
+            .Select(a => a.Key).SequenceEqual(new[] { "openai", "grok", "grokbot" }),
+            "Removed apps stay out of discovery even when installed, open or previously attached; other apps remain");
+        reload.Restore("claude");
+        Check(!new AppCatalog(path).IsRemoved("claude") && reload.IsRemoved(custom.Key), "Adding a built-in app back persists without restoring other removed apps");
+        Check(reload.Connect("Example AI", native).Key == custom.Key && reload.Connections.Length == 2
+            && !new AppCatalog(path).IsRemoved(custom.Key), "Reconnecting a removed custom app restores it without duplicating the saved connection");
         reload.Forget(custom.Key);
         Check(new AppCatalog(path).Connections.Single().Key == web.Key, "Forgetting a connection preserves other saved connections");
         Check(!ZoomLevels.Supports(web.Key) && !ZoomLevels.Supports("claude"), "Unknown app zoom stays under the app's own control");
@@ -49,6 +62,7 @@ internal static class DiscoveryChecks
         using var fallback = new ProviderButton(web, () => { });
         Check(fallback.AccessibleName == "Open Web AI", "Custom apps get a usable icon and accessible navigation label");
         File.Delete(path);
+        File.Delete(Path.ChangeExtension(path, "hidden.json"));
     }
     private static IEnumerable<Control> Descendants(Control control) => control.Controls.Cast<Control>().SelectMany(c => new[] { c }.Concat(Descendants(c)));
     internal static UsageState[] PreviewStates()

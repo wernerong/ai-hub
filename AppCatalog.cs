@@ -59,6 +59,8 @@ internal sealed record CustomConnection(string Key, string Name, string Executab
 internal sealed class AppCatalog
 {
     private readonly string path;
+    private readonly string hiddenPath;
+    private HashSet<string> hidden = [];
     private List<CustomConnection> custom = [];
     private InstalledApp[] installed = [];
     private DateTimeOffset nextScan;
@@ -68,6 +70,10 @@ internal sealed class AppCatalog
     internal AppCatalog(string path)
     {
         this.path = path;
+        hiddenPath = Path.ChangeExtension(path, "hidden.json");
+        try { if (File.Exists(hiddenPath)) hidden = JsonSerializer.Deserialize<HashSet<string>>(File.ReadAllText(hiddenPath)) ?? []; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        { Warning = "Removed apps could not be read. Remove them again to save your choices."; }
         try
         {
             if (File.Exists(path)) custom = (JsonSerializer.Deserialize<List<CustomConnection>>(File.ReadAllText(path)) ?? [])
@@ -78,14 +84,16 @@ internal sealed class AppCatalog
         { Warning = "Saved connections could not be read. Reconnect an AI to save a new list."; }
     }
     internal static AppEntry[] Discover(IEnumerable<InstalledApp> installed, IEnumerable<WindowInfo> windows,
-        IEnumerable<AppEntry> custom, IEnumerable<string> attached)
+        IEnumerable<AppEntry> custom, IEnumerable<string> attached, IEnumerable<string>? hidden = null)
     {
         var inventory = installed.ToArray(); var open = windows.ToArray(); var retained = attached.ToHashSet();
+        var removed = (hidden ?? []).ToHashSet(StringComparer.Ordinal);
         return AppEntry.All.Select(definition =>
         {
             var match = inventory.FirstOrDefault(item => definition.InstallNames.Contains(item.Name, StringComparer.OrdinalIgnoreCase));
             return definition with { LaunchTarget = match?.Target };
-        }).Concat(custom).Where(entry => entry.LaunchTarget is not null || open.Any(entry.Matches) || retained.Contains(entry.Key)).ToArray();
+        }).Concat(custom).Where(entry => !removed.Contains(entry.Key)
+            && (entry.LaunchTarget is not null || open.Any(entry.Matches) || retained.Contains(entry.Key))).ToArray();
     }
     internal async Task<bool> Refresh(IEnumerable<string> attached, bool force = false)
     {
@@ -99,7 +107,7 @@ internal sealed class AppCatalog
                 catch (TimeoutException) { /* Open-window discovery remains usable if the Windows shell stalls. */ }
                 nextScan = DateTimeOffset.Now.AddMinutes(1);
             }
-            var found = Discover(installed, Native.Windows(), custom.Select(c => c.Entry), attached);
+            var found = Discover(installed, Native.Windows(), custom.Select(c => c.Entry), attached, hidden);
             bool changed = !Available.Select(a => (a.Key, a.Name, a.LaunchTarget)).SequenceEqual(found.Select(a => (a.Key, a.Name, a.LaunchTarget)));
             Available = found; return changed;
         }
@@ -107,8 +115,9 @@ internal sealed class AppCatalog
     }
     internal AppEntry Connect(string name, WindowInfo window)
     {
-        var known = Available.FirstOrDefault(a => a.Matches(window)) ?? AppEntry.All.FirstOrDefault(a => a.Matches(window));
-        if (known is not null) return known;
+        var known = Available.FirstOrDefault(a => a.Matches(window)) ?? custom.Select(c => c.Entry).FirstOrDefault(a => a.Matches(window))
+            ?? AppEntry.All.FirstOrDefault(a => a.Matches(window));
+        if (known is not null) { Restore(known.Key); return known; }
         if (window.Executable is null) throw new InvalidOperationException("Windows did not allow this app's identity to be read. Open the app normally and try again.");
         name = name.Trim();
         if (name.Length is < 1 or > 40) throw new InvalidOperationException("Choose a name between 1 and 40 characters.");
@@ -119,11 +128,42 @@ internal sealed class AppCatalog
     }
     internal void Forget(string key) => Save(custom.Where(c => c.Key != key).ToList());
     internal CustomConnection[] Connections => custom.ToArray();
+    internal AppEntry[] Removed => AppEntry.All.Concat(custom.Select(c => c.Entry)).Where(a => hidden.Contains(a.Key)).ToArray();
+    internal bool IsRemoved(string key) => hidden.Contains(key);
+    internal void Remove(string key)
+    {
+        SaveHidden([.. hidden, key]);
+        Available = Available.Where(a => a.Key != key).ToArray();
+    }
+    internal void Restore(string key)
+    {
+        if (hidden.Contains(key)) SaveHidden(hidden.Where(k => k != key).ToHashSet());
+    }
+    private void SaveHidden(HashSet<string> next)
+    {
+        SaveJson(hiddenPath, JsonSerializer.Serialize(next)); hidden = next;
+    }
     private void Save(List<CustomConnection> next)
     {
+        SaveJson(path, JsonSerializer.Serialize(next, new JsonSerializerOptions { WriteIndented = true }));
+        custom = next; Warning = null;
+    }
+    private static void SaveJson(string path, string json)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(next, new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(path + ".tmp", path, true); custom = next; Warning = null;
+        File.WriteAllText(path + ".tmp", json);
+        // As with zoom preferences, a scanner can briefly hold the old file.
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                if (File.Exists(path)) File.Replace(path + ".tmp", path, null);
+                else File.Move(path + ".tmp", path);
+                return;
+            }
+            catch (Exception ex) when (attempt < 3 && ex is IOException or UnauthorizedAccessException)
+            { Thread.Sleep(50 * (attempt + 1)); }
+        }
     }
     private static Task<InstalledApp[]> ScanInstalled()
     {

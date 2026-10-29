@@ -46,6 +46,7 @@ internal sealed class HubForm : Form
     private enum HubPage { Workspace, Settings, Usage }
     private HubPage page;
     private bool pageOpen => page != HubPage.Workspace;
+    private bool navigationMenuOpen => navigation.Values.Any(button => button.ContextMenuStrip?.Visible == true);
 
     internal HubForm(string statePath)
     {
@@ -202,7 +203,7 @@ internal sealed class HubForm : Form
             }
             if (selected is not null && !busy) ResizeSelected();
             if (activation.TakeRequest(selected is not null && !pageOpen && Native.GetForegroundWindow() == Handle,
-                busy || Control.MouseButtons != MouseButtons.None)) QueueSelectedPresentation(true);
+                busy || navigationMenuOpen || Control.MouseButtons != MouseButtons.None)) QueueSelectedPresentation(true);
         };
         FormClosing += (_, e) =>
         {
@@ -391,7 +392,7 @@ internal sealed class HubForm : Form
             if (Native.GetForegroundWindow() != Handle && !dock.IsForeground(selected)) return;
             // A panel click, or settled return activation, can transfer focus.
             // Never interrupt a mouse press that may select a different panel.
-            if (activate && Control.MouseButtons != MouseButtons.None)
+            if (activate && (navigationMenuOpen || Control.MouseButtons != MouseButtons.None))
             {
                 activation.Request();
                 return;
@@ -567,8 +568,9 @@ internal sealed class HubForm : Form
         navigation.Clear();
         foreach (var entry in catalog.Available)
         {
-            var button = new ProviderButton(entry, async () => await Select(catalog.Available.FirstOrDefault(a => a.Key == entry.Key) ?? entry));
-            navigationHints.SetToolTip(button, entry.Name + "\n" + entry.Description);
+            var button = new ProviderButton(entry, async () => await Select(catalog.Available.FirstOrDefault(a => a.Key == entry.Key) ?? entry),
+                async () => await RemoveAI(entry.Key));
+            navigationHints.SetToolTip(button, entry.Name + "\n" + entry.Description + "\nRight-click to remove from AI Hub");
             if (IsHandleCreated) button.Scale(new SizeF(DeviceDpi / 96f, DeviceDpi / 96f));
             navigation[entry.Key] = button; choices.Controls.Add(button);
         }
@@ -585,13 +587,17 @@ internal sealed class HubForm : Form
         try
         {
             using var dialog = new ConnectionDialog(Native.Windows().Where(w => w.Pid != Environment.ProcessId
-                && w.Executable is not null && !new[] { "explorer", "ApplicationFrameHost", "ShellExperienceHost", "StartMenuExperienceHost", "TextInputHost", "SearchHost", "SystemSettings", "codex-computer-use" }.Contains(w.ProcessName, StringComparer.OrdinalIgnoreCase)).ToArray(), catalog.Connections);
+                && w.Executable is not null && !new[] { "explorer", "ApplicationFrameHost", "ShellExperienceHost", "StartMenuExperienceHost", "TextInputHost", "SearchHost", "SystemSettings", "codex-computer-use" }.Contains(w.ProcessName, StringComparer.OrdinalIgnoreCase)).ToArray(), catalog.Available, catalog.Removed);
             if (dialog.ShowDialog(this) != DialogResult.OK) return;
-            if (dialog.ForgetKey is { } key)
+            if (dialog.RemoveKey is { } key)
             {
-                catalog.Forget(key); dock.Detach(key); appliedZoom.Remove(key);
-                if (selected == key) { selected = null; detach.Enabled = false; ShowWelcome(); }
-                await RefreshDiscovery(true); return;
+                busy = false; await RemoveAI(key); return;
+            }
+            if (dialog.RestoreKey is { } restored)
+            {
+                catalog.Restore(restored); await RefreshDiscovery();
+                if (selected is null && !pageOpen) ShowWelcome();
+                return;
             }
             if (dialog.ChosenWindow is not { } chosen) return;
             var entry = catalog.Connect(dialog.ConnectionName, chosen);
@@ -605,6 +611,23 @@ internal sealed class HubForm : Form
             if (selected is not null && !pageOpen) QueueSelectedPresentation(true);
             UpdateStatusVisibility();
         }
+    }
+
+    private async Task RemoveAI(string key)
+    {
+        if (busy || closing) return;
+        activation.Cancel(); focusPresentation = false; busy = true;
+        try
+        {
+            dock.Detach(key); appliedZoom.Remove(key);
+            if (selected == key) { selected = null; detach.Enabled = false; }
+            catalog.Remove(key);
+            await RefreshDiscovery();
+            RebuildNavigation(); UpdateNavigation();
+            if (selected is null && !pageOpen) ShowWelcome("The AI was removed from this workspace. Add it back with + / Connect an AI.");
+        }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Remove from AI Hub", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+        finally { busy = false; UpdateStatusVisibility(); }
     }
 
     private void UpdateStatusVisibility()

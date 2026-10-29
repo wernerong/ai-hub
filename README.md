@@ -10,10 +10,18 @@ allowance rings, reset countdowns and amber warnings.
 
 ## Run
 
-Download the Windows x64 ZIP from [the latest public release](https://github.com/wernerong/ai-hub/releases/latest),
-verify it against `SHA256SUMS.txt`, and extract it. Run `Install-AIHub.ps1` in
-PowerShell to install for your Windows account with shortcuts and an entry in
-Installed apps. You can also run `AIHub.exe` from a writable folder.
+Download **AIHub-vX.Y.Z-windows-x64-Setup.exe** from [the latest public release](https://github.com/wernerong/ai-hub/releases/latest)
+and double-click it. Close AI Hub first if upgrading. Setup installs for your
+Windows account, creates shortcuts and registers a native uninstaller in
+Installed apps. No administrator access, PowerShell commands, execution-policy
+changes or ZIP extraction are needed. Existing settings remain in place.
+The installer is currently unsigned, so Windows may show an unknown-publisher
+or SmartScreen warning. Checksums are provided in `SHA256SUMS.txt`.
+
+The ZIP remains available for portable use and automatic updates. To run it
+portably, extract it to a writable folder and open `AIHub.exe`. Its legacy
+PowerShell installation scripts are retained for compatibility; **Setup.exe**
+is the recommended installation method.
 The .NET runtime is included. Open or install your AI apps separately.
 
 The version stays visible in the title bar and sidebar. **Pop out** restores
@@ -34,7 +42,8 @@ without using GitHub Actions jobs, minutes, artifact storage or cache storage.
 
 ## Build and package
 
-Requires Windows and the .NET 10 SDK.
+Requires Windows and the .NET 10 SDK. Packaging also requires Inno Setup 6.7+
+(`ISCC.exe` on PATH or selected with the `INNO_SETUP_COMPILER` environment variable).
 
 ```powershell
 .\Build.ps1
@@ -42,7 +51,7 @@ Requires Windows and the .NET 10 SDK.
 ```
 
 Build writes to `dist`. Package builds, runs the Windows integration self-test,
-and produces a versioned ZIP and SHA-256 checksum in `artifacts`.
+and produces a native Setup.exe, a versioned ZIP and SHA-256 checksums in `artifacts`.
 Pass `-OutputDirectory` to choose another destination. Package staging folders
 must be new so stale files cannot enter a release.
 
@@ -60,9 +69,17 @@ For another AI, select **+** in the sidebar, open its app, and choose its window
 Use a separate browser window for a website: AI Hub hosts the whole window.
 Custom desktop connections remember the executable path; custom browser
 connections remember that path and the selected title. Reconnect a browser
-window if its title changes after it closes. **Forget saved** removes a custom
-connection and restores its window. Connections are local to this Windows
-account in `%LOCALAPPDATA%\AIHub\connections.json`.
+window if its title changes after it closes.
+
+Right-click any AI's sidebar button and choose **Remove from AI Hub**. This
+restores its original window and remembers your choice across restarts, even
+if the app is still installed or running. You can also remove apps from the
+**+ / Connect an AI** dialog. Choose a removed app there and **Add back to AI
+Hub** to restore it. Removing an app does not uninstall it or erase its account.
+Usage monitoring can be enabled or disabled separately in Settings.
+Connections are local to this Windows account in
+`%LOCALAPPDATA%\AIHub\connections.json`; removed choices are stored alongside
+them in `connections.hidden.json`. Claude uses its official desktop app icon.
 
 App hosting and usage monitoring are separate capabilities. Usage cards appear
 only for detected, enabled readers: Codex CLI, Grok CLI / Build login and Grok

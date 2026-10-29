@@ -53,11 +53,16 @@ foreach ($folder in @([Environment]::GetFolderPath('Desktop'), [Environment]::Ge
     $shortcut.Description = 'AI Hub - AI apps and usage in one workspace'; $shortcut.IconLocation = $exe + ',0'; $shortcut.Save()
 }
 $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AIHub'
-New-Item -Path $key -Force | Out-Null
+$nativeKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AIHub_is1'
+$native = Get-ItemProperty -LiteralPath $nativeKey -ErrorAction SilentlyContinue
+$keepNative = $native -and $native.InstallLocation.TrimEnd('\') -eq $installation -and (Test-Path -LiteralPath (Join-Path $installation 'unins000.exe'))
+if ($keepNative) { $key = $nativeKey }
+if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
 $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $uninstall = '"' + $powershell + '" -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $installation 'Uninstall-AIHub.ps1') + '"'
 $values = @{ DisplayName = 'AI Hub'; DisplayVersion = $version; Publisher = 'wernerong'; InstallLocation = $installation;
     DisplayIcon = $exe; UninstallString = $uninstall; QuietUninstallString = $uninstall + ' -Quiet'; URLInfoAbout = 'https://github.com/wernerong/ai-hub' }
+if ($keepNative) { $values.Remove('UninstallString'); $values.Remove('QuietUninstallString') }
 foreach ($entry in $values.GetEnumerator()) { New-ItemProperty -LiteralPath $key -Name $entry.Key -Value $entry.Value -PropertyType String -Force | Out-Null }
 New-ItemProperty -LiteralPath $key -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
 New-ItemProperty -LiteralPath $key -Name NoRepair -Value 1 -PropertyType DWord -Force | Out-Null
