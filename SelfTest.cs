@@ -21,8 +21,13 @@ internal static class SelfTest
                 await UsageChecks.Run(folder, lines);
                 DiscoveryChecks.Run(folder, lines);
                 WorkspaceChecks.Run(folder, lines);
+                SplitWorkspaceChecks.Run(folder, lines);
                 CommandChecks.Run(lines);
+                ContextShelfChecks.Run(folder, lines);
+                UsageHistoryChecks.Run(folder, lines);
+                await SplitViewChecks.Run(folder, lines);
                 ProjectIntegrationChecks.CheckPlacement(lines);
+                ProjectIntegrationChecks.CheckSessionSwitch(folder, lines);
                 ActivationChecks.CheckPolicy(lines);
                 await TaskbarChecks.Run(form.Handle, lines);
                 await UpdateChecks.Run(folder, lines);

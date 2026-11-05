@@ -8,7 +8,8 @@ browser windows with **Connect an AI**, keeping their existing accounts and
 conversations. A dark, cyan HUD shows available usage monitors with remaining
 allowance rings, reset countdowns and amber warnings. Save projects with their
 AI apps, notes, links and window layout, then use the command palette to switch
-between projects and tools.
+between projects and tools. Version 0.7.0 adds two-AI split view, a local context
+shelf for prepared handoffs, and usage history with clearly labeled estimates.
 
 ## Run
 
@@ -59,13 +60,85 @@ must be new so stale files cannot enter a release.
 
 ## Behavior and limits
 
+### Two-AI split view
+
+Select **Split view** above the workspace, choose two different AIs, and select
+**Open split**. Use the **Stack vertically (top and bottom)** checkbox for a
+stacked layout; leave it off for side-by-side panes. The cyan **FOCUSED** pane
+header identifies the active AI. Click inside an AI or its pane header to focus
+it. A sidebar selection replaces the focused pane; selecting the AI already in
+the other pane focuses that pane instead of duplicating it.
+
+Drag the divider to change the saved ratio, within 20–80%. **Commands → Swap
+split panes** exchanges their positions. Open **Split view** (shown as **Layout
+· 2 AIs** while split) and select **Single AI** to keep the focused app at full
+workspace size. **Pop out** returns the focused app to its original window and
+expands the remaining connected AI. Minimize hides both panes; restoring the
+hub returns the split workspace and its focused AI.
+
+Session resume remembers both apps, their orientation, divider ratio and focus.
+Saved projects remember a split when both pane apps belong to the project.
+Unavailable apps remain named in their panes so you can reconnect them or choose
+replacements. Split view hosts two distinct app windows; it does not create
+extra conversations or split OpenAI's ChatGPT, Codex and Dot modes into separate
+windows.
+
+### Context shelf and handoffs
+
+Open **Context shelf** above the workspace or search for it in Commands. Each
+project has its own saved text snippets, instructions, file references and
+handoff draft; the personal workspace has a separate shelf. **Add text** saves
+a titled snippet. **Add files** saves references to the files you choose, without
+reading their contents or uploading them.
+
+Check the items to include, choose a target AI, and edit **Goal**, **Decisions**,
+**Evidence**, **Constraints** and **Next step**. Project notes are included only
+when you check **Include project notes**. **Exact preview** shows the rendered
+handoff. **Save draft** preserves the five fields for this workspace. **Copy**
+saves the draft and copies the preview; **Copy & open target** also opens or
+focuses the chosen AI after copying succeeds. Paste the handoff yourself and
+attach any referenced files manually. No content is pasted or sent to an AI
+automatically, and the shelf does not import provider conversations.
+
+The shelf is stored in `%LOCALAPPDATA%\AIHub\context-shelf.json`. Removing a
+shelf item leaves referenced files in place. Deleting a project also removes
+its shelf and handoff draft while keeping other projects and personal context.
+Malformed shelf data is preserved with a warning instead of being overwritten.
+
+### Local usage history
+
+Choose **Usage → Usage history** or **Commands → Show usage history** for recorded
+quota charts, reported reset times and allowance estimates. Local recording is
+enabled by default and can be changed with **Record usage locally**. **Clear
+history** removes the saved samples without changing provider accounts or their
+allowances. Disabling recording pauses new samples and estimates while retaining
+the history within its retention limits.
+
+History uses fresh, successful numeric quota readings already collected by the
+monitor. It adds no provider requests. It keeps up to 30 days and 50,000 samples,
+discarding the oldest samples, in `%LOCALAPPDATA%\AIHub\usage-history.json`.
+Only provider/quota identifiers, used percentages and fetch/reset times are
+stored; balances, account details, tokens and chat content are excluded. History
+belongs to this Windows account rather than an identified provider account;
+clear it after changing provider accounts.
+
+Estimates compare the observed consumption rate with the provider's reported
+reset time. They require a fresh current reading and at least three comparable
+readings over five minutes in the same reset window. A reset change, usage
+decrease or gap longer than ten minutes starts a new comparison period. The
+calculation uses at most six hours of recent observations. Insufficient history,
+missing reset times or no measurable consumption produce an unavailable estimate,
+not a guessed allowance. Every forecast is labeled **Estimate**; future usage
+may differ. Codex, Grok CLI / Build and Grok Bot retain their separate product
+scopes. Reported reset times are never treated as confirmation of a new allowance.
+
 ### Projects and session resume
 
 Version 0.6.0 adds **Projects** in the bar above the workspace. Choose **+ New
 project**, enter a name, check the AI apps you want, and add optional notes,
 web links or full folder paths. **Save current** saves those choices and the
 hub's current size, position and maximized state. **Open workspace** reconnects
-the project's apps and returns to its selected AI. Editing an existing project
+the project's apps and returns to its selected AI or saved split. Editing an existing project
 uses the same controls; unavailable or removed apps remain saved in the project.
 
 The last workspace resumes on startup by default. Turn **Resume the last
@@ -79,7 +152,8 @@ Resume reconnects unambiguous app windows and can launch installed apps that
 have a known launcher. If an app is unavailable, a browser needs reassignment,
 or several windows could match, select the AI to finish connecting it. Project
 resources open only when you choose them. Notes stay in AI Hub unless you use
-**Copy project notes** and paste them elsewhere. AI Hub does not read chat
+**Copy project notes** or explicitly include them in a context-shelf handoff.
+AI Hub does not read chat
 history or restore an exact conversation inside a provider's app.
 
 Projects, notes, resources and resume preferences are stored locally in
@@ -94,7 +168,8 @@ to cancel. **Ctrl+K** also opens the palette while AI Hub itself has focus.
 
 Commands include opening projects and apps, connecting or reconnecting an AI,
 opening project resources, copying project notes, refreshing usage and opening
-Settings. Search for **Change command shortcut** to choose **Ctrl+Alt+K**,
+Settings, plus split layouts, pane swapping, the context shelf and usage history.
+Search for **Change command shortcut** to choose **Ctrl+Alt+K**,
 **Ctrl+Alt+P**, the default **Ctrl+Alt+Space**, or **Disabled**. If another app
 owns a shortcut, AI Hub keeps the previous working choice. The Commands button
 and the in-hub Ctrl+K shortcut remain available. Preferences are local in
@@ -180,8 +255,8 @@ adapted from AI Usage Widget. The standalone widget remains independently
 installed; close it when using AI Hub for monitoring to avoid duplicate reads.
 This update does not alter its settings or startup behavior.
 
-The hub aligns independent native windows over its content area and hides
-inactive apps. A separate helper restores original styles and positions after
+The hub aligns one or two independent native windows over its content area and
+hides apps outside the visible layout. A separate helper restores original styles and positions after
 an unexpected exit. It does not merge accounts or use model API keys.
 
 Zoom changes AI app content only. Settings are stored locally in
@@ -195,8 +270,8 @@ The icon was created with built-in image generation; its prompt is recorded in
 [Assets/icon-prompt.txt](Assets/icon-prompt.txt).
 Provider artwork is attributed in [Assets/Providers/README.txt](Assets/Providers/README.txt).
 See [CHANGELOG.md](CHANGELOG.md) for release history.
-See [the roadmap](docs/ROADMAP.md) for the planned cross-AI and public-product
-phases after v0.6.0.
+See [the roadmap](docs/ROADMAP.md) for the delivered phases and remaining
+compatibility work.
 
 To exercise foreground activation with disposable windows, run
 `AIHub.exe --activation-test <absolute-output-folder>` and click **Run activation

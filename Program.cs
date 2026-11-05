@@ -14,6 +14,14 @@ internal static class Program
         {
             ProjectIntegrationChecks.Show(args[1]); return;
         }
+        if (args.Length == 2 && args[0] == "--history-preview")
+        {
+            UsageHistoryDialog.ShowPreview(args[1]); return;
+        }
+        if (args.Length == 3 && args[0] == "--split-diagnostics")
+        {
+            SplitViewChecks.Diagnose(args[1], args[2]); return;
+        }
         if (args.Length == 2 && args[0] == "--usage-preview")
         {
             DiscoveryChecks.ShowPreview(args[1]); return;
@@ -86,7 +94,7 @@ internal static class Program
         }
         if (args.Length > 0 && args[0] == "--sample")
         {
-            var sample = new Form { Text = "AI Hub test window", Size = new Size(700, 480), StartPosition = FormStartPosition.CenterScreen };
+            var sample = new Form { Text = args.Length >= 3 && args[1] == "--title" ? args[2] : "AI Hub test window", Size = new Size(700, 480), StartPosition = FormStartPosition.CenterScreen };
             if (args.Contains("--minimum-size")) sample.MinimumSize = new Size(400, 1000);
             sample.Controls.Add(new TextBox { Multiline = true, Dock = DockStyle.Fill, Text = "Disposable window for dock, resize and restore checks.", Font = new Font("Segoe UI", 15) });
             Application.Run(sample);

@@ -54,6 +54,9 @@ internal sealed partial class HubForm : Form
         this.isolated = isolated;
         dock = new DockManager(statePath);
         projects = new WorkspaceStore(Path.Combine(Path.GetDirectoryName(statePath)!, "workspaces.json"));
+        contextShelf = new ContextShelfStore(Path.Combine(Path.GetDirectoryName(statePath)!, "context-shelf.json"));
+        usageHistory = new UsageHistoryStore(Path.Combine(Path.GetDirectoryName(statePath)!, "usage-history.json"));
+        if (!isolated) usageHistory.Record([], DateTimeOffset.Now);
         commandSettingsPath = Path.Combine(Path.GetDirectoryName(statePath)!, "command-shortcut.json");
         catalog = new AppCatalog(Path.Combine(Path.GetDirectoryName(statePath)!, "connections.json"));
         zoom = new ZoomSettings(Path.Combine(Path.GetDirectoryName(statePath)!, "zoom-settings.json"));
@@ -119,6 +122,7 @@ internal sealed partial class HubForm : Form
         top.Controls.Add(actions);
 
         var main = new Panel { Dock = DockStyle.Fill };
+        viewport.Controls.Add(CreateSplitHost());
         viewport.Controls.Add(empty);
         main.Controls.Add(viewport);
         main.Controls.Add(status);
@@ -189,8 +193,9 @@ internal sealed partial class HubForm : Form
         };
         timer.Tick += (_, _) =>
         {
-            taskbar?.SetTarget(!closing && !busy && !modalOpen && !openingProject && !pageOpen && WindowState != FormWindowState.Minimized
-                && selected is not null && dock.Windows.TryGetValue(selected, out var activeWindow) && activeWindow.Matches() ? (nint)activeWindow.Handle : 0);
+            ObservePaneFocus();
+            taskbar?.SetTargets(!closing && !busy && !modalOpen && !openingProject && !pageOpen && WindowState != FormWindowState.Minimized
+                ? VisibleWindowHandles() : []);
             if (taskbar?.Take(Control.MouseButtons != MouseButtons.None) == true)
             {
                 WindowState = FormWindowState.Minimized;
@@ -206,13 +211,11 @@ internal sealed partial class HubForm : Form
             if (minimized)
             {
                 minimized = false;
-                if (selected is not null && !pageOpen) dock.Select(selected, viewport.Handle);
+                if (!pageOpen) PresentWorkspace();
             }
             if (selected is not null && !busy && !pageOpen && !dock.Has(selected))
             {
-                selected = null;
-                detach.Enabled = false;
-                ShowWelcome("The app window closed. Select its tab to open it again.");
+                HandleClosedSelection();
             }
             if (selected is not null && !busy) ResizeSelected();
             if (activation.TakeRequest(selected is not null && !pageOpen && Native.GetForegroundWindow() == Handle,
@@ -265,6 +268,14 @@ internal sealed partial class HubForm : Form
     private void ShowWelcome(string? message = null)
     {
         page = HubPage.Workspace;
+        if (split is not null)
+        {
+            UpdateSplitChrome(); UpdateWorkspaceHeading(); UpdateNavigation();
+            if (message is not null) status.Text = message;
+            return;
+        }
+        splitContainer.Visible = false;
+        empty.BringToFront();
         detach.Enabled = selected is not null && dock.Has(selected);
         heading.Text = "Welcome to your workspace";
         ClearContent();
@@ -305,6 +316,7 @@ internal sealed partial class HubForm : Form
         CancelStartupResume();
         activation.Cancel();
         page = HubPage.Settings;
+        UpdateSplitChrome(); empty.BringToFront();
         focusPresentation = false;
         dock.HideAll();
         ClearContent();
@@ -369,16 +381,19 @@ internal sealed partial class HubForm : Form
                 if (automatic && candidates.Count > 1) { connectionIssue = $"Choose which {entry.Name} window to connect from the sidebar."; return; }
                 var chosen = candidates.Count == 1 ? candidates[0] : ChooseWindow(candidates);
                 if (chosen is null) { status.Text = "No window selected."; return; }
-                await dock.Attach(entry.Key, chosen, viewport.Handle, () => WindowState != FormWindowState.Minimized && !modalOpen && !closing);
+                // Keep a new app hidden until discovery and its final pane layout
+                // are ready; it must never briefly cover the other split pane.
+                await dock.Attach(entry.Key, chosen, PaneHandle(entry.Key), () => false);
                 await RefreshDiscovery();
             }
+            if (split is not null) split = SplitSelection.Place(split, entry.Key);
             selected = entry.Key;
             RememberSession();
             page = HubPage.Workspace;
             empty.Visible = false;
             if (WindowState == FormWindowState.Minimized) dock.HideAll();
-            else dock.Select(entry.Key, viewport.Handle);
-            heading.Text = entry.Name + "   /   " + entry.Description;
+            else if (!openingProject) PresentWorkspace();
+            UpdateSplitChrome(); UpdateWorkspaceHeading();
             detach.Enabled = true;
             status.Text = entry.Key == "openai" ? "Use the OpenAI app's own ChatGPT, Codex and Dot controls. Your chats and account stay in that app." : $"{entry.Name} is connected. Click inside the app to use it.";
             UpdateNavigation();
@@ -386,7 +401,7 @@ internal sealed partial class HubForm : Form
         }
         catch (Exception ex)
         {
-            if (!pageOpen && selected is not null && dock.Has(selected) && WindowState != FormWindowState.Minimized) dock.Select(selected, viewport.Handle);
+            if (!pageOpen && selected is not null && dock.Has(selected) && WindowState != FormWindowState.Minimized && !openingProject) PresentWorkspace();
             status.Text = $"Could not connect {entry.Name}.";
             connectionIssue = $"Could not connect {entry.Name}: {ex.Message}";
             if (!automatic) MessageBox.Show(this, ex.Message, "AI Hub", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -411,8 +426,8 @@ internal sealed partial class HubForm : Form
 
     private void ResizeSelected()
     {
-        if (selected is null || pageOpen || closing || modalOpen || openingProject || WindowState == FormWindowState.Minimized) return;
-        try { dock.Resize(selected, viewport.Handle, Native.GetForegroundWindow() == Handle || dock.IsForeground(selected)); }
+        if (selected is null || pageOpen || closing || busy || modalOpen || openingProject || WindowState == FormWindowState.Minimized) return;
+        try { PresentWorkspace(WorkspaceOwnsForeground()); }
         catch (Exception ex) { status.Text = "Resize failed: " + ex.Message; }
     }
     private void QueueSelectedPresentation(bool focus = false)
@@ -430,7 +445,7 @@ internal sealed partial class HubForm : Form
             if (closing || busy || modalOpen || openingProject || pageOpen || selected is null || WindowState == FormWindowState.Minimized || taskbar?.Pending == true) return;
             // Windows finishes activating/raising the hub before its app is
             // placed above the content area. Do not steal focus from other apps.
-            if (Native.GetForegroundWindow() != Handle && !dock.IsForeground(selected)) return;
+            if (!WorkspaceOwnsForeground()) return;
             // A panel click, or settled return activation, can transfer focus.
             // Never interrupt a mouse press that may select a different panel.
             if (activate && (navigationMenuOpen || Control.MouseButtons != MouseButtons.None))
@@ -440,7 +455,7 @@ internal sealed partial class HubForm : Form
             }
             try
             {
-                dock.Select(selected, viewport.Handle, activate);
+                PresentWorkspace(true, activate);
                 if (activate) await ApplySelectedZoom();
             }
             catch (Exception ex) { status.Text = "Could not show the selected app: " + ex.Message; }
@@ -470,10 +485,13 @@ internal sealed partial class HubForm : Form
         if (selected is null || busy) return;
         try
         {
-            dock.Detach(selected);
-            appliedZoom.Remove(selected);
-            selected = null;
+            var popped = selected;
+            dock.Detach(popped);
+            appliedZoom.Remove(popped);
+            if (split?.Contains(popped) == true) LeaveSplitAfterRemoving(popped);
+            else selected = null;
             RememberSession();
+            if (selected is not null) { UpdateWorkspaceHeading(); UpdateNavigation(); QueueSelectedPresentation(); return; }
             detach.Enabled = false;
             heading.Text = "Your workspace";
             ShowWelcome("The app is back in its own window. Select a tab to continue.");
@@ -487,7 +505,7 @@ internal sealed partial class HubForm : Form
         {
             dock.RestoreAll();
             appliedZoom.Clear();
-            selected = null;
+            selected = null; SetSplit(null);
             RememberSession();
             detach.Enabled = false;
             heading.Text = "Your workspace";
@@ -516,6 +534,7 @@ internal sealed partial class HubForm : Form
         if (busy || closing || modalOpen || openingProject) return;
         CancelStartupResume();
         page = HubPage.Usage;
+        UpdateSplitChrome(); empty.BringToFront();
         focusPresentation = false;
         dock.HideAll();
         ClearContent();
@@ -524,7 +543,7 @@ internal sealed partial class HubForm : Form
         {
             if (selected is { } key && catalog.Available.FirstOrDefault(a => a.Key == key) is { } entry) await Select(entry);
             else ShowWelcome();
-        }, ShowSettings);
+        }, ShowSettings, ShowUsageHistory);
         empty.Controls.Add(usagePage);
         empty.Visible = true;
         heading.Text = "Usage   /   Allowances and connections";
@@ -536,7 +555,12 @@ internal sealed partial class HubForm : Form
     private void UsageChanged()
     {
         if (closing || IsDisposed || !IsHandleCreated) return;
-        try { BeginInvoke((Action)(() => { if (!closing && !IsDisposed) UpdateUsage(); })); }
+        try { BeginInvoke((Action)(() =>
+        {
+            if (closing || IsDisposed) return;
+            if (!isolated) usageHistory.Record(usage.States, DateTimeOffset.Now);
+            UpdateUsage();
+        })); }
         catch (InvalidOperationException) { /* The hub is closing. */ }
     }
 
@@ -667,10 +691,12 @@ internal sealed partial class HubForm : Form
         try
         {
             dock.Detach(key); appliedZoom.Remove(key);
+            LeaveSplitAfterRemoving(key);
             if (selected == key) { selected = null; detach.Enabled = false; }
             catalog.Remove(key);
             await RefreshDiscovery();
             RebuildNavigation(); UpdateNavigation();
+            RememberSession();
             if (selected is null && !pageOpen) ShowWelcome("The AI was removed from this workspace. Add it back with + / Connect an AI.");
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Remove from AI Hub", MessageBoxButtons.OK, MessageBoxIcon.Information); }

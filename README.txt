@@ -1,4 +1,59 @@
-AI Hub 0.6.0 — Windows desktop workspace
+AI Hub 0.7.0 — Windows desktop workspace
+
+0.7.0: Split view, context handoffs and local usage history
+Select Split view above the workspace, choose two different AIs, then Open
+split. Leave Stack vertically unchecked for side-by-side panes, or check it
+for top-and-bottom panes. The cyan FOCUSED header identifies the active AI.
+Click inside either app or its header to focus it. Selecting another AI in
+the sidebar replaces the focused pane; selecting the AI already in the other
+pane focuses that pane instead of duplicating it.
+
+Drag the divider to save a ratio between 20% and 80%. Commands / Swap split
+panes exchanges their positions. Open Split view (Layout · 2 AIs while split)
+and choose Single AI to return the focused app to the full workspace. Pop out
+restores the focused app's original window and expands the remaining AI.
+Minimize hides both panes; restore brings back the split and focused AI.
+Session resume remembers both pane apps, orientation, ratio and focus. A saved
+project remembers the split when both apps are members of that project.
+Unavailable apps remain named in their panes for reconnection or replacement.
+
+Context shelf above the workspace saves titled text snippets, instructions
+and file references for the active project, with a separate personal shelf.
+Add text or Add files, check the items to include, and choose the target AI.
+Edit Goal, Decisions, Evidence, Constraints and Next step, then review Exact
+preview. Project notes are included only when you check Include project notes.
+Save draft persists those five fields. Copy saves the draft and copies the
+rendered handoff; Copy & open target also opens or focuses the selected AI
+after copying succeeds. Paste it yourself and attach referenced files manually.
+Files are references only: their contents are not read or uploaded. Nothing
+is pasted or sent to another AI automatically, and chat histories are not imported.
+
+Shelf data is local in %LOCALAPPDATA%\AIHub\context-shelf.json. Removing an item
+keeps its referenced files. Deleting a project removes that project's shelf
+and draft while preserving personal context and other projects. Malformed
+saved data is preserved with a visible warning rather than silently replaced.
+
+Open Usage / Usage history or search Show usage history in Commands for quota
+charts, reported reset times and clearly labeled consumption estimates.
+Record usage locally is enabled by default; toggle it independently, or use
+Clear history to delete saved samples without changing provider allowances.
+Recording uses fresh, successful numeric quota readings already collected by
+the monitor and adds no provider requests. Up to 30 days and 50,000 samples are
+kept, with older samples discarded. Disabling recording also pauses estimates
+and retains existing history within those limits.
+
+Usage history stores provider/quota identifiers, percentages and fetch/reset
+times in %LOCALAPPDATA%\AIHub\usage-history.json. It excludes account details,
+balances, tokens and chat content. Clear history after changing provider
+accounts: history is local to this Windows account, not identified per provider
+account. Codex, Grok CLI / Build and Grok Bot usage scopes remain separate.
+
+An estimate needs a fresh current reading, a future reported reset, and at
+least three comparable readings spanning five minutes in the same quota
+window. A usage decrease, changed reset or gap over ten minutes restarts the
+comparison. At most six hours of recent observations are used. Insufficient
+history or no measurable consumption remains unavailable. Estimates are not
+guarantees; future usage may differ. A countdown does not confirm a reset.
 
 0.6.0: Saved projects, session resume and commands
 Select Projects above the workspace, choose + New project, enter a name and
@@ -42,7 +97,7 @@ window is hosted. AI Hub does not guess unrelated browser windows or navigate
 them automatically.
 
 0.5.0: Native Windows installer and removable AI apps
-Download AIHub-v0.6.0-windows-x64-Setup.exe from the latest release and
+Download AIHub-v0.7.0-windows-x64-Setup.exe from the latest release and
 double-click it. Close AI Hub first if upgrading. Setup installs for your
 Windows account with shortcuts and a native Windows Installed apps uninstaller.
 No PowerShell commands, execution-policy changes or administrator access are
@@ -177,7 +232,7 @@ every app. Closing AI Hub restores grouped windows without quitting the apps.
 How it works
 AI Hub groups the original app windows visually with a shared sidebar and
 workspace. It keeps them as independent top-level Windows windows, aligns the
-selected one with its content area, and hides inactive windows. It does not
+one or two visible apps with their content areas, and hides other windows. It does not
 embed the apps as child windows, merge accounts, or replace them with model APIs.
 Your existing apps continue to own their conversations, logins and subscriptions.
 No API keys or account migration are needed. App-owned pop-ups may open separately.
@@ -217,7 +272,10 @@ The release includes deterministic quota-parser, polling, cancellation, stale
 data, alert deduplication and preference checks, plus the original window
 recovery and zoom checks. Project persistence, resume preferences, command
 filtering and browser reconnection are covered by additional deterministic
-checks. The package includes its complete validation report.
+checks. Split layout/focus and two-window recovery, scoped context persistence,
+exact handoff rendering, file-reference boundaries, local history retention
+and conservative estimates have additional checks. The package includes its
+complete validation report.
 Live verification covers the settings layout and Grok Bot zoom and reset.
 OpenAI shortcut behavior was inspected in the installed app's code; its UI
 was not automated. Native app updates may change their shortcut behavior.

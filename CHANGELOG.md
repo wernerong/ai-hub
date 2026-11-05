@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 — 2026-11-05
+
+- Show two AI apps side by side or stacked, with a cyan focused-pane header, a draggable divider and a command to swap panes.
+- Replace only the focused pane when selecting a new AI, focus an already-visible AI without duplicating it, and expand the remaining app after popping one out.
+- Persist split orientation, ratio and focused app in sessions and compatible saved projects; preserve two-window minimize, restore and crash recovery.
+- Add a local context shelf with project-scoped text snippets, instructions and file references, plus editable Goal, Decisions, Evidence, Constraints and Next step handoff drafts.
+- Preview the exact selected context before explicit Copy or Copy & open target; require manual pasting and file attachment, with no automatic sending, chat import or file-content reading.
+- Record fresh numeric quota observations locally for up to 30 days and 50,000 samples, with product-specific charts, reported reset timelines and enable/clear controls.
+- Label consumption forecasts as estimates and require fresh, comparable observations; show insufficient history when a reliable comparison cannot be made.
+- Keep native per-user installation and public-release automatic updates; build, validate and publish locally without GitHub Actions minutes.
+
 ## 0.6.0 — 2026-11-05
 
 - Add saved projects containing AI app choices, the selected app, notes, links, folders and the hub's window layout.

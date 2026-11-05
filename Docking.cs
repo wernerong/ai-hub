@@ -93,6 +93,8 @@ internal static class Recovery
     }
 }
 
+internal sealed record DockPlacement(string Key, nint Viewport);
+
 internal sealed class DockManager : IDisposable
 {
     private readonly string statePath;
@@ -149,19 +151,61 @@ internal sealed class DockManager : IDisposable
     }
 
     internal void Select(string key, nint parent, bool activate = false)
+        => Present([new(key, parent)], key, activate: activate);
+
+    internal void Present(IReadOnlyList<DockPlacement> layout, string? focusKey, bool raise = true, bool activate = false)
     {
-        // Hide other apps first. Showing an already-visible app with SW_SHOW
-        // activates it in the middle of the hub's mouse/activation messages.
+        ArgumentNullException.ThrowIfNull(layout);
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var viewports = new HashSet<nint>();
+        var visible = new List<(DockPlacement Placement, SavedWindow Window)>();
+        var handles = new HashSet<long>();
+        foreach (var placement in layout)
+        {
+            if (placement is null || string.IsNullOrWhiteSpace(placement.Key) || !keys.Add(placement.Key))
+                throw new InvalidOperationException("Choose a different AI for each workspace pane.");
+            if (!viewports.Add(placement.Viewport) || placement.Viewport == 0 || !Native.IsWindow(placement.Viewport)
+                || !Native.GetWindowRect(placement.Viewport, out var bounds) || bounds.Right <= bounds.Left || bounds.Bottom <= bounds.Top)
+                throw new InvalidOperationException("Each AI needs its own available workspace pane.");
+            if (!windows.TryGetValue(placement.Key, out var saved) || !saved.Matches()) continue;
+            if (!handles.Add(saved.Handle)) throw new InvalidOperationException("The same app window cannot appear in two workspace panes.");
+            visible.Add((placement, saved));
+        }
+        // Validate the whole layout first. Inactive apps are hidden together;
+        // neither of the requested panes is hidden while the other is arranged.
         foreach (var (name, saved) in windows)
         {
-            if (name != key && saved.Matches() && Native.IsWindowVisible((nint)saved.Handle))
+            if (!keys.Contains(name) && saved.Matches() && Native.IsWindowVisible((nint)saved.Handle))
                 Native.ShowWindow((nint)saved.Handle, Native.SW_HIDE);
         }
-        Resize(key, parent, true);
-        // An independent app can stay below the foreground hub despite
-        // HWND_TOP + SWP_NOACTIVATE. Transfer focus after the panel click.
-        if (activate && windows.TryGetValue(key, out var selected) && selected.Matches())
-            Native.SetForegroundWindow((nint)selected.Handle);
+        foreach (var (placement, saved) in visible)
+        {
+            ShowWithoutActivation((nint)saved.Handle);
+            Native.Align((nint)saved.Handle, placement.Viewport, raise);
+        }
+        // Background alignment never requests foreground focus. An explicit
+        // selection focuses only the requested pane after both are positioned.
+        if (activate && focusKey is not null && visible.FirstOrDefault(item => item.Placement.Key == focusKey).Window is { } focused)
+            Native.SetForegroundWindow((nint)focused.Handle);
+        if (raise && visible.Count > 1)
+        {
+            // HWND_TOP with SWP_NOACTIVATE can leave another process's window
+            // below the foreground hub. Once a pane owns foreground focus,
+            // place its siblings directly behind it instead of asking for TOP.
+            // Never reorder this group while an unrelated app has focus.
+            nint foreground = Native.GetForegroundWindow();
+            if (visible.Any(item => (nint)item.Window.Handle == foreground))
+            {
+                nint preceding = foreground;
+                foreach (var (_, saved) in visible.Where(item => (nint)item.Window.Handle != foreground))
+                {
+                    if (!Native.SetWindowPos((nint)saved.Handle, preceding, 0, 0, 0, 0,
+                        0x1 | 0x2 | Native.SWP_NOACTIVATE))
+                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
+                    preceding = (nint)saved.Handle;
+                }
+            }
+        }
     }
     internal bool IsForeground(string key)
     {

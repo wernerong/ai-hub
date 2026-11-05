@@ -38,7 +38,8 @@ internal sealed class TaskbarToggle : IDisposable
     private readonly Thread listener;
     private readonly HookProc callback;
     private readonly TaskCompletionSource<bool> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private nint target, pressedTarget;
+    private nint[] targets = [];
+    private nint pressedTarget;
     private Native.Point origin;
     private uint threadId;
     private bool disposed;
@@ -52,7 +53,12 @@ internal sealed class TaskbarToggle : IDisposable
     }
     internal void SetTarget(nint selected)
     {
-        lock (gate) { if (target != selected) { click.Cancel(); pressedTarget = 0; } target = selected; }
+        SetTargets(selected == 0 ? [] : [selected]);
+    }
+    internal void SetTargets(IEnumerable<nint> hosted)
+    {
+        var next = hosted.Where(h => h != 0).Distinct().Order().ToArray();
+        lock (gate) { if (!targets.SequenceEqual(next)) { click.Cancel(); pressedTarget = 0; } targets = next; }
     }
     internal void Cancel() { lock (gate) { click.Cancel(); pressedTarget = 0; } }
     internal void Activated(nint previous)
@@ -62,7 +68,7 @@ internal sealed class TaskbarToggle : IDisposable
     internal bool Pending { get { lock (gate) return click.Pending(Environment.TickCount64); } }
     internal bool Take(bool inputHeld)
     {
-        lock (gate) return click.Take(target, Native.GetForegroundWindow() == hub, inputHeld, Environment.TickCount64);
+        lock (gate) return click.Take(pressedTarget, Native.GetForegroundWindow() == hub, inputHeld, Environment.TickCount64);
     }
     private void Listen()
     {
@@ -97,7 +103,8 @@ internal sealed class TaskbarToggle : IDisposable
                 if (message == 0x0201)
                 {
                     bool modified = new[] { 0x10, 0x11, 0x12, 0x5B, 0x5C }.Any(key => GetAsyncKeyState(key) < 0);
-                    pressedTarget = target != 0 && Native.GetForegroundWindow() == target && IsTaskbarPoint(input.Point) && !modified ? target : 0;
+                    var foreground = Native.GetForegroundWindow();
+                    pressedTarget = targets.Contains(foreground) && IsTaskbarPoint(input.Point) && !modified ? foreground : 0;
                     origin = input.Point;
                     pressed = pressedTarget != 0;
                     click.Begin(pressedTarget, pressedTarget != 0, modified, Environment.TickCount64);
@@ -128,7 +135,7 @@ internal sealed class TaskbarToggle : IDisposable
     private static bool IsTaskbarPoint(Native.Point point) => IsTaskbarWindow(WindowFromPoint(point));
     public void Dispose()
     {
-        lock (gate) { if (disposed) return; disposed = true; click.Cancel(); target = pressedTarget = 0; if (threadId != 0) PostThreadMessage(threadId, 0x0012, 0, 0); }
+        lock (gate) { if (disposed) return; disposed = true; click.Cancel(); targets = []; pressedTarget = 0; if (threadId != 0) PostThreadMessage(threadId, 0x0012, 0, 0); }
     }
     private delegate nint HookProc(int code, nint message, nint data);
     [StructLayout(LayoutKind.Sequential)]

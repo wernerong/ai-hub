@@ -1,35 +1,48 @@
 # AI Hub roadmap
 
-The next releases build on the existing native Windows workspace and public update channel. Version numbers below describe the intended sequence, not release dates. Each phase is validated before publication; builds and release uploads continue locally without GitHub Actions minutes.
+AI Hub builds on its native Windows workspace and public update channel. The
+phases below describe implemented capabilities through v0.7.0. Builds,
+validation and release uploads run locally without GitHub Actions minutes.
 
 ## Foundation — v0.5.0
 
-The published v0.5.0 release adds native per-user installation and uninstall, persistent removal and restoration of sidebar apps, and upgrade compatibility. Earlier releases provide app discovery, usage monitoring, native window recovery and normal taskbar minimize/restore behavior.
+Native per-user installation and uninstall, persistent removal and restoration
+of sidebar apps, and upgrade compatibility build on app discovery, usage
+monitoring, native window recovery and taskbar minimize/restore behavior.
 
 ## Project continuity — v0.6.0
 
-- Save named projects with AI apps, notes, links, folders and the hub's window layout.
-- Resume the last workspace and selected AI, with an independent startup preference.
-- Search available projects, apps and actions through a command palette and configurable shortcut.
-- Reconnect changed browser windows explicitly while keeping saved connection identities and project membership.
+- Named projects save AI apps, notes, links, folders and window layout.
+- Session resume restores the last workspace, with an independent startup preference.
+- A command palette finds available projects, apps and actions through a configurable shortcut.
+- Explicit browser reassignment preserves saved connection identities and project membership.
 
-Project data stays local. Hosting a native window does not grant access to its conversations. Resume and project opening leave ambiguous window assignments to the user.
+Project data stays local. Ambiguous window assignments remain a user choice.
+Native window hosting does not grant access to provider conversations.
 
-## Working across AIs — planned v0.7.0
+## Working across AIs — v0.7.0
 
-- Two-AI split view with saved layouts and a clear focused pane.
-- A context shelf for explicitly saved snippets, files and project instructions.
-- Editable handoff templates containing the goal, decisions, evidence, constraints and next step.
-- Local usage history, reset timelines and clearly labeled consumption estimates, retaining each provider's actual product scope.
+- Two-AI split view supports side-by-side and stacked panes, clear focus, a saved divider ratio and pane swapping. Projects and sessions preserve the layout; popping out one app expands the remaining app.
+- A context shelf stores user-selected snippets, instructions and file references separately for each project and the personal workspace.
+- Editable handoff drafts contain Goal, Decisions, Evidence, Constraints and Next step. An exact preview precedes explicit copying; opening the chosen target does not paste or send the handoff. Files require manual attachment.
+- Local usage history stores fresh numeric observations for up to 30 days and 50,000 samples. Product-specific reset timelines and labeled consumption estimates retain their source scopes and show insufficient history when appropriate.
+- Local data has bounded persistence and malformed-file protection. Shelf removal never deletes referenced files; history can be disabled or cleared independently of provider allowances.
 
-Split view must extend minimize/restore, focus, recovery and display-scaling checks before release. Context transfer starts with content the user chooses; automatic sending or chat imports require a supported provider integration. The shelf must show what will be shared and where before a handoff is sent.
+These features use the existing native Setup.exe, portable/update ZIP and public
+release updater. Provider accounts and conversations stay in their own apps.
 
-## Public product polish — planned v1.0
+## Planned v1.0 — public product polish
+
+This is the next planned phase, not functionality included in v0.7.0. It has
+no committed release date and requires its own implementation and validation.
 
 - Capability-based integrations that expose only supported actions, usage, links, imports and notifications.
 - Optional voice commands for workspace navigation and status, with explicit microphone controls.
-- Consistent command-centre styling, purposeful state transitions and reduced-motion support.
-- Broader compatibility validation across sleep/wake, monitor changes, virtual desktops and provider updates.
-- Trusted code signing for the native installer and executable once a signing identity is available, plus documented release provenance and upgrade recovery.
+- Consistent command-centre styling, purposeful transitions and reduced-motion support.
+- Broader compatibility validation across mixed-DPI monitors, monitor changes, sleep/wake, virtual desktops and provider updates.
+- Trusted signing for the native installer and executable once a signing identity is available, with documented release provenance and recovery.
 
-The current installer remains unsigned until that signing work is configured and verified. Deeper integrations and voice controls require their own capability, permission and compatibility checks; they are not part of v0.6.0.
+The current installer remains unsigned. Voice control, automatic conversation
+imports and automatic handoff sending are not implemented. Release validation
+must continue to preserve focus, minimize/restore and original-window recovery
+as compatibility work expands.

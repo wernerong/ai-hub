@@ -195,7 +195,7 @@ internal sealed class UsagePage : UserControl
     private readonly Button refresh;
     private readonly Label empty = new() { Text = "No usage monitors connected.\nAvailable monitors appear here when their apps or CLI logins are detected.\nConnect an AI from the sidebar to bring its window into your workspace.", AutoSize = true, ForeColor = UsageStyle.Muted, Margin = new Padding(0, 22, 0, 26) };
     private readonly Label summary = new() { AutoSize = true, ForeColor = UsageStyle.Good, Margin = new Padding(0, 4, 0, 12) };
-    internal UsagePage(UsageProvider[] providers, Action refresh, Action back, Action settings)
+    internal UsagePage(UsageProvider[] providers, Action refresh, Action back, Action settings, Action? showHistory = null)
     {
         AutoScaleMode = AutoScaleMode.Dpi; AutoScaleDimensions = new SizeF(96, 96);
         Dock = DockStyle.Fill; BackColor = UsageStyle.Background; ForeColor = UsageStyle.Ink; Font = new Font("Segoe UI", 10); AutoScroll = true; Padding = new Padding(28);
@@ -207,6 +207,7 @@ internal sealed class UsagePage : UserControl
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Margin = new Padding(0, 0, 0, 16) };
         this.refresh = UsageStyle.Button("Refresh readings", refresh); toolbar.Controls.Add(this.refresh);
         toolbar.Controls.Add(UsageStyle.Button("Monitors & alerts", settings)); toolbar.Controls.Add(UsageStyle.Button("Back to workspace", back));
+        if (showHistory is not null) toolbar.Controls.Add(UsageStyle.Button("Usage history", showHistory));
         stack.Controls.Add(toolbar); stack.Controls.Add(cards); stack.Controls.Add(empty);
         stack.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(900, 0), Text = "Each monitor covers the product named on its card. ChatGPT, Dot and Grok web limits are separate.\nUnknown readings stay unavailable; stale readings retain their last successful sync time.", ForeColor = UsageStyle.Muted, Font = new Font("Segoe UI", 9), Margin = new Padding(0, 6, 0, 18) });
         Controls.Add(stack); cards.SizeChanged += (_, _) => ArrangeCards();

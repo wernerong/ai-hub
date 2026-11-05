@@ -22,9 +22,13 @@ internal sealed partial class HubForm
         projectButton.Dock = DockStyle.Fill; projectButton.TextAlign = ContentAlignment.MiddleLeft;
         projectButton.AccessibleName = "Manage saved projects";
         commandsButton = MakeButton("Commands  ·  Ctrl+Alt+Space", async () => await ShowCommands());
-        commandsButton.Dock = DockStyle.Right; commandsButton.Width = 280;
+        commandsButton.Dock = DockStyle.Right; commandsButton.Width = 240;
         commandsButton.AccessibleName = "Open command palette";
-        bar.Controls.Add(projectButton); bar.Controls.Add(commandsButton);
+        var contextButton = MakeButton("Context shelf", async () => await ShowContextShelf());
+        contextButton.Dock = DockStyle.Right; contextButton.Width = 125; contextButton.AccessibleName = "Open context shelf and handoff";
+        layoutButton = MakeButton("Split view", async () => await ShowSplitOptions());
+        layoutButton.Dock = DockStyle.Right; layoutButton.Width = 125; layoutButton.AccessibleName = "Choose workspace layout";
+        bar.Controls.Add(projectButton); bar.Controls.Add(layoutButton); bar.Controls.Add(contextButton); bar.Controls.Add(commandsButton);
         UpdateProjectBar();
         return bar;
     }
@@ -56,7 +60,7 @@ internal sealed partial class HubForm
     private void RememberSession()
     {
         if (!sessionReady || openingProject) return;
-        try { projects.SaveSession(projects.ActiveProjectId, selected, CaptureLayout()); }
+        try { projects.SaveSession(projects.ActiveProjectId, selected, CaptureLayout(), split); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         { status.Text = "Could not save the workspace: " + ex.Message; }
     }
@@ -72,21 +76,23 @@ internal sealed partial class HubForm
             UpdateProjectBar(); return;
         }
         ApplyLayout(projects.LastLayout);
+        var lastSplit = projects.LastSplit;
         if (ActiveProject is { } project)
         {
             string? last = projects.LastSelectedAppKey;
             await OpenProject(project, restoreLayout: false);
-            if (last != selected && catalog.Available.FirstOrDefault(a => a.Key == last) is { } lastApp)
+            if (lastSplit is null && last != selected && catalog.Available.FirstOrDefault(a => a.Key == last) is { } lastApp)
                 await Select(lastApp, automatic: true);
         }
-        else if (projects.LastSelectedAppKey is { } key && catalog.Available.FirstOrDefault(a => a.Key == key) is { } entry)
+        else if (lastSplit is null && projects.LastSelectedAppKey is { } key && catalog.Available.FirstOrDefault(a => a.Key == key) is { } entry)
         {
             connectionIssue = null;
             await Select(entry, automatic: true);
             if (connectionIssue is not null) ShowWelcome(connectionIssue);
         }
+        if (lastSplit is not null) await OpenSplit(lastSplit, automatic: true);
         sessionReady = true;
-        UpdateProjectBar();
+        UpdateProjectBar(); RememberSession();
     }
 
     private async Task ShowProjects()
@@ -94,32 +100,47 @@ internal sealed partial class HubForm
         if (busy || closing || modalOpen || openingProject) return;
         CancelStartupResume();
         RememberSession();
+        var previousIds = projects.Projects.Select(p => p.Id).ToArray();
         string? openId;
         SuspendForDialog();
         try
         {
             using var dialog = new WorkspaceDialog(projects, catalog.Available,
-                dock.Windows.Where(p => p.Value.Matches()).Select(p => p.Key).ToArray(), selected, CaptureLayout());
+                dock.Windows.Where(p => p.Value.Matches()).Select(p => p.Key).ToArray(), selected, CaptureLayout(), split);
             dialog.ShowDialog(this);
             openId = dialog.OpenProjectId;
         }
         finally { modalOpen = false; UpdateProjectBar(); }
+        var cleanupErrors = new List<string>();
+        foreach (var removed in previousIds.Where(id => projects.Projects.All(p => p.Id != id)))
+            try { contextShelf.RemoveProject(removed); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            { cleanupErrors.Add(ex.Message); }
         if (openId is not null && projects.Projects.FirstOrDefault(p => p.Id == openId) is { } project) await OpenProject(project);
         else if (selected is not null && !pageOpen) QueueSelectedPresentation(true);
-        else if (!pageOpen) ShowWelcome();
+        else if (!pageOpen && split is null) ShowWelcome();
+        if (cleanupErrors.Count > 0)
+        {
+            SuspendForDialog();
+            try { MessageBox.Show(this, "The project was deleted, but its saved context could not be removed from context-shelf.json.\n\n" + string.Join("\n", cleanupErrors),
+                "Could not remove project context", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+            finally { modalOpen = false; if (selected is not null && !pageOpen) QueueSelectedPresentation(true); }
+        }
     }
 
     private async Task OpenProject(ProjectWorkspace project, bool restoreLayout = true)
     {
         if (busy || closing || openingProject) return;
         RememberSession();
-        openingProject = true; activation.Cancel(); focusPresentation = false;
         var issues = new List<string>();
         try
         {
-            // Switching projects releases original windows before arranging the new set.
-            dock.RestoreAll(); appliedZoom.Clear(); selected = null;
-            projects.SaveSession(project.Id, project.SelectedAppKey, project.Layout);
+            WorkspaceSessionSwitch.Begin(projects, project.Id, project.SelectedAppKey, project.Layout, project.Split, () =>
+            {
+                openingProject = true; activation.Cancel(); focusPresentation = false;
+                // A failed target save must leave the previous workspace intact.
+                dock.RestoreAll(); appliedZoom.Clear(); selected = null; SetSplit(null);
+            });
             if (restoreLayout) ApplyLayout(project.Layout);
             UpdateProjectBar();
             await RefreshDiscovery(true);
@@ -134,7 +155,14 @@ internal sealed partial class HubForm
                 await Select(entry, automatic: true, fromProject: true);
                 if (connectionIssue is not null) issues.Add(connectionIssue);
             }
-            if (selected is null) ShowWelcome(issues.Count > 0 ? string.Join("\n", issues) : "Your project is ready. Select an AI or manage the project's notes and links.");
+            if (project.Split is { } layout)
+            {
+                SetSplit(layout); page = HubPage.Workspace;
+                selected = dock.Has(layout.FocusedAppKey) ? layout.FocusedAppKey : new[] { layout.FirstAppKey, layout.SecondAppKey }.FirstOrDefault(dock.Has);
+                if (selected is not null) split = layout with { FocusedAppKey = selected };
+                UpdateSplitChrome(); UpdateWorkspaceHeading(); UpdateNavigation();
+            }
+            else if (selected is null) ShowWelcome(issues.Count > 0 ? string.Join("\n", issues) : "Your project is ready. Select an AI or manage the project's notes and links.");
         }
         catch (Exception ex)
         {
@@ -144,6 +172,7 @@ internal sealed partial class HubForm
         finally
         {
             openingProject = false;
+            if (!pageOpen && split is not null) PresentWorkspace();
             if (selected is not null && !pageOpen) QueueSelectedPresentation(true);
             RememberSession(); UpdateProjectBar();
         }
@@ -192,6 +221,10 @@ internal sealed partial class HubForm
     {
         yield return new("projects", "Manage projects", "Save apps, notes, folders and links", "workspace create save resume");
         yield return new("personal", "Open personal workspace", "Leave the current project and return to your apps", "home default");
+        yield return new("split", "Choose split view", "Show two AIs side by side or stacked; return to one AI", "layout dual compare panes");
+        if (split is not null) yield return new("swap-panes", "Swap split panes", "Move the first and second AI to opposite sides", "layout reverse left right top bottom");
+        yield return new("context", "Open context shelf and handoff", "Choose snippets, instructions and file references; preview before copying", "clipboard transfer draft context files");
+        yield return new("history", "Show usage history", "Local quota timeline and estimates for each product", "consumption resets trends retention");
         foreach (var project in projects.Projects)
             yield return new("project:" + project.Id, "Open project: " + project.Name, "Restore saved apps and layout", project.Name + " " + project.Notes);
         foreach (var app in catalog.Available)
@@ -229,8 +262,17 @@ internal sealed partial class HubForm
             {
                 case "projects": await ShowProjects(); break;
                 case "personal":
-                    RememberSession(); dock.RestoreAll(); appliedZoom.Clear(); selected = null;
-                    projects.SaveSession(null, null, CaptureLayout()); UpdateProjectBar(); ShowWelcome(); break;
+                    RememberSession();
+                    WorkspaceSessionSwitch.Begin(projects, null, null, CaptureLayout(), null, () =>
+                    {
+                        dock.RestoreAll(); appliedZoom.Clear(); selected = null; SetSplit(null);
+                    });
+                    UpdateProjectBar(); ShowWelcome(); break;
+                case "split": await ShowSplitOptions(); break;
+                case "context": await ShowContextShelf(); break;
+                case "history": ShowUsageHistory(); break;
+                case "swap-panes":
+                    if (split is { } current) { SetSplit(current with { FirstAppKey = current.SecondAppKey, SecondAppKey = current.FirstAppKey, Ratio = 100 - current.Ratio }); PresentWorkspace(); RememberSession(); } break;
                 case "connect": await ConnectAI(); break;
                 case "usage": ShowUsage(); break;
                 case "refresh": await usage.RefreshAsync(true); break;
@@ -310,6 +352,19 @@ internal sealed partial class HubForm
         commandsButton.Text = registered && commandKey != Keys.None ? "Commands  ·  Ctrl+Alt+" + commandKey : "Commands  ·  Ctrl+K";
         navigationHints.SetToolTip(commandsButton, registered ? "Search apps, projects and actions. Ctrl+K also works while AI Hub has focus."
             : "The global shortcut is unavailable. Use this button, then Change command shortcut.");
+    }
+}
+
+internal static class WorkspaceSessionSwitch
+{
+    internal static void Begin(WorkspaceStore projects, string? projectId, string? selectedKey,
+        WorkspaceBounds? layout, WorkspaceSplit? split, Action releaseCurrent)
+    {
+        // Commit the destination before releasing native windows or clearing
+        // runtime state. If persistence fails, later autosaves still describe
+        // the previous workspace rather than an uncompleted switch.
+        projects.SaveSession(projectId, selectedKey, layout, split);
+        releaseCurrent();
     }
 }
 

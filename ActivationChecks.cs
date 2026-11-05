@@ -41,7 +41,7 @@ internal static class ActivationChecks
                 if (!condition) throw new InvalidOperationException(label);
                 lines.Add("PASS " + label);
             }
-            Process? sample = null, unrelated = null;
+            Process? sample = null, unrelated = null, splitSample = null;
             using var manager = new DockManager(Path.Combine(folder, "activation-windows.json"));
             try
             {
@@ -93,12 +93,55 @@ internal static class ActivationChecks
                         && Native.IsAbove(window.Handle, form.Handle) && Native.GetForegroundWindow() == window.Handle,
                         $"Restore {repeat} returns the same AI above the workspace with focus");
                 }
+                var split = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+                split.ColumnStyles.Add(new(SizeType.Percent, 50)); split.ColumnStyles.Add(new(SizeType.Percent, 50));
+                split.RowStyles.Add(new(SizeType.Percent, 100));
+                var left = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 6, 0) };
+                var right = new Panel { Dock = DockStyle.Fill, Margin = new Padding(6, 0, 0, 0) };
+                split.Controls.Add(left, 0, 0); split.Controls.Add(right, 1, 0); viewport.Controls.Add(split);
+                splitSample = Program.StartSelf("--sample", "--dpi-v1");
+                WindowInfo? splitWindow = null;
+                for (int i = 0; i < 80 && splitWindow is null; i++)
+                {
+                    await Task.Delay(50);
+                    splitWindow = Native.Windows().FirstOrDefault(w => w.Pid == splitSample.Id);
+                }
+                if (splitWindow is null) throw new InvalidOperationException("Disposable second split app did not start.");
+                await manager.Attach("split", splitWindow, right.Handle, () => false);
+                DockPlacement[] panes = [new("sample", left.Handle), new("split", right.Handle)];
+                for (int repeat = 1; repeat <= 3; repeat++)
+                {
+                    Native.SetForegroundWindow(otherWindow.Handle); await Task.Delay(60);
+                    manager.Present(panes, "sample", raise: false);
+                    Check(Native.GetForegroundWindow() == otherWindow.Handle && Native.IsAbove(otherWindow.Handle, window.Handle)
+                        && Native.IsAbove(otherWindow.Handle, splitWindow.Handle), $"Split background alignment {repeat} leaves the unrelated app in front");
+                    Native.SetForegroundWindow(form.Handle); await Task.Delay(60);
+                    manager.Present(panes, "sample", activate: true); await Task.Delay(60);
+                    lines.Add($"DETAIL splitReturn={repeat}, foreground={Native.GetForegroundWindow()}, hub={form.Handle}, first={window.Handle}, second={splitWindow.Handle}, firstVisible={Native.IsWindowVisible(window.Handle)}, secondVisible={Native.IsWindowVisible(splitWindow.Handle)}, firstAboveHub={Native.IsAbove(window.Handle, form.Handle)}, secondAboveHub={Native.IsAbove(splitWindow.Handle, form.Handle)}");
+                    Check(Native.IsWindowVisible(window.Handle) && Native.IsWindowVisible(splitWindow.Handle)
+                        && Native.IsAbove(window.Handle, form.Handle) && Native.IsAbove(splitWindow.Handle, form.Handle)
+                        && Native.GetForegroundWindow() == window.Handle, $"Split return {repeat} restores both panes and focuses the first AI");
+                    manager.Present(panes, "split", activate: true); await Task.Delay(60);
+                    Check(Native.GetForegroundWindow() == splitWindow.Handle && Native.IsWindowVisible(window.Handle)
+                        && Native.IsWindowVisible(splitWindow.Handle) && Native.IsAbove(window.Handle, form.Handle)
+                        && Native.IsAbove(splitWindow.Handle, form.Handle), $"Split selection {repeat} focuses the second AI without hiding or covering the first");
+                    manager.Present(panes, "sample", raise: false);
+                    Check(Native.GetForegroundWindow() == splitWindow.Handle, "Split resizing does not move focus to its supplied focus key without activation");
+                    form.WindowState = FormWindowState.Minimized; manager.HideAll(); await Task.Delay(60);
+                    Check(Native.IsIconic(form.Handle) && !Native.IsWindowVisible(window.Handle) && !Native.IsWindowVisible(splitWindow.Handle)
+                        && !sample.HasExited && !splitSample.HasExited, $"Split minimize {repeat} hides both running AI windows");
+                    form.WindowState = FormWindowState.Normal; Native.SetForegroundWindow(form.Handle); await Task.Delay(60);
+                    manager.Present(panes, "split", activate: true); await Task.Delay(60);
+                    Check(Native.IsWindowVisible(window.Handle) && Native.IsWindowVisible(splitWindow.Handle)
+                        && Native.IsAbove(window.Handle, form.Handle) && Native.IsAbove(splitWindow.Handle, form.Handle)
+                        && Native.GetForegroundWindow() == splitWindow.Handle, $"Split restore {repeat} returns both panes and the last focused AI");
+                }
             }
             catch (Exception ex) { lines.Add("FAIL " + ex.Message); }
             finally
             {
                 try { manager.RestoreAll(); } catch (Exception ex) { lines.Add("FAIL cleanup: " + ex.Message); }
-                foreach (var process in new[] { sample, unrelated })
+                foreach (var process in new[] { sample, unrelated, splitSample })
                 {
                     if (process is { HasExited: false })
                     {

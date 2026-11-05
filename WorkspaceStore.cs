@@ -3,8 +3,13 @@ using System.Text.Json;
 namespace AIHub;
 
 internal sealed record WorkspaceBounds(int X, int Y, int Width, int Height, int Dpi, bool Maximized);
+internal sealed record WorkspaceSplit(string FirstAppKey, string SecondAppKey, string FocusedAppKey, bool Stacked = false, int Ratio = 50)
+{
+    internal bool Contains(string? key) => key == FirstAppKey || key == SecondAppKey;
+    internal string Other(string key) => key == FirstAppKey ? SecondAppKey : FirstAppKey;
+}
 internal sealed record ProjectWorkspace(string Id, string Name, string[] AppKeys, string? SelectedAppKey,
-    string Notes, string[] Resources, WorkspaceBounds? Layout);
+    string Notes, string[] Resources, WorkspaceBounds? Layout, WorkspaceSplit? Split = null);
 
 internal sealed class WorkspaceStore
 {
@@ -18,6 +23,7 @@ internal sealed class WorkspaceStore
     internal bool ResumeOnStartup => data.ResumeOnStartup;
     internal string? LastSelectedAppKey => data.LastSelectedAppKey;
     internal WorkspaceBounds? LastLayout => data.LastLayout;
+    internal WorkspaceSplit? LastSplit => data.LastSplit;
     internal string? Warning { get; private set; }
 
     internal WorkspaceStore(string path)
@@ -44,6 +50,7 @@ internal sealed class WorkspaceStore
                 throw new InvalidDataException("The active project is missing from the projects file.");
             ValidateKey(loaded.LastSelectedAppKey);
             ValidateLayout(loaded.LastLayout);
+            ValidateSplit(loaded.LastSplit);
             data = loaded;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or InvalidOperationException or ArgumentException)
@@ -76,16 +83,17 @@ internal sealed class WorkspaceStore
             ActiveProjectId = data.ActiveProjectId == id ? null : data.ActiveProjectId });
     }
 
-    internal void SaveSession(string? activeProjectId, string? selectedKey, WorkspaceBounds? layout)
+    internal void SaveSession(string? activeProjectId, string? selectedKey, WorkspaceBounds? layout, WorkspaceSplit? split = null)
     {
         EnsureWritable();
         if (activeProjectId is not null && !data.Projects.Any(p => p.Id == activeProjectId))
             throw new InvalidOperationException("That project is no longer saved.");
-        ValidateKey(selectedKey); ValidateLayout(layout);
+        ValidateKey(selectedKey); ValidateLayout(layout); ValidateSplit(split);
         var projects = data.Projects.Select(p => p.Id == activeProjectId
-            ? p with { SelectedAppKey = selectedKey is not null && p.AppKeys.Contains(selectedKey) ? selectedKey : null, Layout = layout }
+            ? p with { SelectedAppKey = selectedKey is not null && p.AppKeys.Contains(selectedKey) ? selectedKey : null, Layout = layout,
+                Split = ForApps(split, p.AppKeys) }
             : p).ToArray();
-        Save(data with { ActiveProjectId = activeProjectId, LastSelectedAppKey = selectedKey, LastLayout = layout, Projects = projects });
+        Save(data with { ActiveProjectId = activeProjectId, LastSelectedAppKey = selectedKey, LastLayout = layout, LastSplit = split, Projects = projects });
     }
 
     internal void SetResumeOnStartup(bool enabled)
@@ -113,8 +121,8 @@ internal sealed class WorkspaceStore
         if (project.Resources is null || project.Resources.Length > MaxResources)
             throw new InvalidOperationException($"Keep up to {MaxResources} links or folders in a project.");
         var resources = project.Resources.Select(resource => NormalizeResource(resource, loading, previous)).Distinct(StringComparer.Ordinal).ToArray();
-        ValidateKey(project.SelectedAppKey); ValidateLayout(project.Layout);
-        return new(id!, name, keys, project.SelectedAppKey is { } selected && keys.Contains(selected) ? selected : null, notes, resources, project.Layout);
+        ValidateKey(project.SelectedAppKey); ValidateLayout(project.Layout); ValidateSplit(project.Split);
+        return new(id!, name, keys, project.SelectedAppKey is { } selected && keys.Contains(selected) ? selected : null, notes, resources, project.Layout, ForApps(project.Split, keys));
     }
 
     private static string NormalizeResource(string resource, bool loading, ProjectWorkspace? previous)
@@ -140,6 +148,18 @@ internal sealed class WorkspaceStore
             throw new InvalidOperationException("The saved window layout is invalid.");
     }
 
+    internal static WorkspaceSplit? ForApps(WorkspaceSplit? split, string[] keys) => split is not null
+        && keys.Contains(split.FirstAppKey) && keys.Contains(split.SecondAppKey) ? split : null;
+
+    private static void ValidateSplit(WorkspaceSplit? split)
+    {
+        if (split is null) return;
+        ValidateKey(split.FirstAppKey); ValidateKey(split.SecondAppKey); ValidateKey(split.FocusedAppKey);
+        if (string.IsNullOrEmpty(split.FirstAppKey) || string.IsNullOrEmpty(split.SecondAppKey)
+            || split.FirstAppKey == split.SecondAppKey || !split.Contains(split.FocusedAppKey) || split.Ratio is < 20 or > 80)
+            throw new InvalidOperationException("The saved split view is invalid. Choose two different apps and a split between 20% and 80%.");
+    }
+
     private void EnsureWritable()
     {
         if (Warning is not null) throw new InvalidOperationException(Warning);
@@ -157,7 +177,7 @@ internal sealed class WorkspaceStore
                 JsonSerializer.Serialize(stream, next, Json);
                 stream.Flush(true);
             }
-            File.Move(temporary, path, true);
+            LocalFile.Replace(temporary, path);
             data = next;
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
@@ -172,5 +192,6 @@ internal sealed class WorkspaceStore
         public bool ResumeOnStartup { get; init; } = true;
         public string? LastSelectedAppKey { get; init; }
         public WorkspaceBounds? LastLayout { get; init; }
+        public WorkspaceSplit? LastSplit { get; init; }
     }
 }

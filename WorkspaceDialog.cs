@@ -7,6 +7,7 @@ internal sealed class WorkspaceDialog : Form
     private readonly string[] connectedKeys;
     private readonly string? selectedKey;
     private readonly WorkspaceBounds currentLayout;
+    private readonly WorkspaceSplit? currentSplit;
     private readonly ListBox projects;
     private readonly TextBox name, notes, resources;
     private readonly CheckedListBox apps;
@@ -15,14 +16,16 @@ internal sealed class WorkspaceDialog : Form
     private readonly Button save, open, delete;
     private string? editingId;
     private string? editingSelectedKey;
+    private WorkspaceSplit? editingSplit;
     private bool loading, dirty, acceptingClose;
     private int previousIndex;
     internal string? OpenProjectId { get; private set; }
 
-    internal WorkspaceDialog(WorkspaceStore store, AppEntry[] available, string[] connectedKeys, string? selectedKey, WorkspaceBounds currentLayout)
+    internal WorkspaceDialog(WorkspaceStore store, AppEntry[] available, string[] connectedKeys, string? selectedKey, WorkspaceBounds currentLayout, WorkspaceSplit? currentSplit = null)
     {
         this.store = store; this.available = available; this.connectedKeys = connectedKeys;
         this.selectedKey = selectedKey; this.currentLayout = currentLayout;
+        this.currentSplit = currentSplit;
         Text = "AI Hub · Projects"; Size = new Size(990, 800); MinimumSize = new Size(780, 650);
         StartPosition = FormStartPosition.CenterParent; BackColor = UsageStyle.Background; ForeColor = UsageStyle.Ink;
         Font = new Font("Segoe UI", 10); MinimizeBox = false; MaximizeBox = false; Padding = new Padding(22);
@@ -109,7 +112,7 @@ internal sealed class WorkspaceDialog : Form
     }
     private void LoadEditor(ProjectWorkspace? project)
     {
-        loading = true; editingId = project?.Id; editingSelectedKey = project?.SelectedAppKey;
+        loading = true; editingId = project?.Id; editingSelectedKey = project?.SelectedAppKey; editingSplit = project?.Split;
         name.Text = project?.Name ?? ""; notes.Text = project?.Notes ?? ""; resources.Lines = project?.Resources ?? [];
         resume.Checked = store.ResumeOnStartup;
         var chosen = (project?.AppKeys ?? connectedKeys).ToHashSet(StringComparer.Ordinal);
@@ -152,7 +155,8 @@ internal sealed class WorkspaceDialog : Form
             string? active = selectedKey is not null && keys.Contains(selectedKey) ? selectedKey
                 : editingSelectedKey is not null && keys.Contains(editingSelectedKey) ? editingSelectedKey : keys.FirstOrDefault();
             var saved = store.SaveProject(new(editingId ?? "", name.Text, keys, active, notes.Text,
-                resources.Lines.Where(line => !string.IsNullOrWhiteSpace(line)).ToArray(), currentLayout));
+                resources.Lines.Where(line => !string.IsNullOrWhiteSpace(line)).ToArray(), currentLayout,
+                WorkspaceStore.ForApps(currentSplit ?? editingSplit, keys)));
             ReloadProjects(saved.Id); status.Text = "Project saved. Open workspace to use it."; return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
