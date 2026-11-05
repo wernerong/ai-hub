@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0 — 2026-11-05
+
+- Add saved projects containing AI app choices, the selected app, notes, links, folders and the hub's window layout.
+- Resume the last workspace by default, with a startup preference that saves independently of project edits; fit restored layouts to available display bounds.
+- Reconnect saved project apps without choosing between ambiguous windows automatically; retain unavailable app membership and report connections that need user attention.
+- Add a searchable command palette for projects, available AI apps, resources, usage and workspace actions, with keyboard navigation and a configurable global shortcut.
+- Keep explicitly saved custom connections visible while closed and reassign browser windows without changing their names or project identities.
+- Keep hosted apps hidden during project and command dialogs, and preserve minimize, focus restoration, native installation and public-release updates.
+- Validate project persistence and malformed-data preservation, startup preferences, command filtering, browser reassignment and saved-window placement locally.
+
 ## 0.5.0 — 2026-10-29
 
 - Add a per-user native Windows Setup.exe and native uninstaller; remove the need to run PowerShell scripts when installing a release.

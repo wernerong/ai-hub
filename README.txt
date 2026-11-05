@@ -1,7 +1,48 @@
-AI Hub 0.5.0 — Windows desktop workspace
+AI Hub 0.6.0 — Windows desktop workspace
+
+0.6.0: Saved projects, session resume and commands
+Select Projects above the workspace, choose + New project, enter a name and
+check the AI apps you want. Add optional notes, web links or full folder paths.
+Save current captures the project and the hub's size, position and maximized
+state. Open workspace reconnects its apps and returns to the selected AI.
+Unavailable and removed apps stay saved in the project for later use.
+
+Resume the last workspace when AI Hub starts is enabled by default. Change it
+in Projects to start with the personal workspace instead. The checkbox saves
+immediately, independently of project edits. The latest app selection and
+window layout are remembered as you use or close AI Hub. Notes and project app
+membership require Save current. Saved layouts are fitted to an available
+display when restored.
+
+Press Ctrl+Alt+Space or select Commands to search apps, projects and actions.
+Use Up/Down and Enter to choose a command, or Escape to cancel. Ctrl+K also
+opens commands while AI Hub itself has focus. Search for Change command
+shortcut to choose Ctrl+Alt+K, Ctrl+Alt+P, Ctrl+Alt+Space or Disabled. If a
+shortcut is occupied, the previous working choice remains registered.
+The Commands button and in-hub Ctrl+K shortcut remain available.
+
+Project resources open only when chosen. Copy project notes places your notes
+on the clipboard for an explicit handoff; AI Hub does not read chat histories
+or reopen a specific conversation inside another app. Automatic resume skips
+ambiguous windows and reports unavailable apps or browsers needing reconnection.
+Select the AI to finish connecting it. Installed apps with a known launcher
+can be opened automatically during resume.
+
+Projects and resume preferences live in %LOCALAPPDATA%\AIHub\workspaces.json.
+The shortcut choice lives in %LOCALAPPDATA%\AIHub\command-shortcut.json.
+Deleting a saved project keeps its AI apps, chats and linked folders intact.
+
+Saved custom connections stay in the sidebar while closed unless removed.
+When a browser title changes, select its sidebar button and explicitly choose
+the replacement browser window. Alternatively, use + / Connect an AI, select
+the open browser window and existing saved connection, then choose Reconnect
+saved browser. Its name and identity stay the same, preserving project
+membership without duplicates. Use a dedicated browser window: the whole
+window is hosted. AI Hub does not guess unrelated browser windows or navigate
+them automatically.
 
 0.5.0: Native Windows installer and removable AI apps
-Download AIHub-v0.5.0-windows-x64-Setup.exe from the latest release and
+Download AIHub-v0.6.0-windows-x64-Setup.exe from the latest release and
 double-click it. Close AI Hub first if upgrading. Setup installs for your
 Windows account with shortcuts and a native Windows Installed apps uninstaller.
 No PowerShell commands, execution-policy changes or administrator access are
@@ -28,8 +69,8 @@ OpenAI, Grok, Grok Bot, Claude, Gemini, Perplexity, DeepSeek, LM Studio and Msty
 Choose + / Connect an AI for any other desktop app or dedicated browser window.
 The whole window is hosted; your AI keeps its existing login and conversations.
 Custom desktop connections remember the executable path. Custom browser
-connections also require the selected title, so reconnect if that title changes
-after closing the window. Use Remove from AI Hub to hide a saved connection.
+connections also match the selected title; v0.6.0 adds explicit reassignment
+when that title changes. Use Remove from AI Hub to hide a saved connection.
 Saved connections live in %LOCALAPPDATA%\AIHub\connections.json.
 
 The usage command center uses cyan allowance rings, amber warnings and clear
@@ -174,7 +215,9 @@ including restoration of their original size and minimum-size behavior.
 Only the disposable sample app and the test host are closed/terminated by tests.
 The release includes deterministic quota-parser, polling, cancellation, stale
 data, alert deduplication and preference checks, plus the original window
-recovery and zoom checks. The package includes its complete validation report.
+recovery and zoom checks. Project persistence, resume preferences, command
+filtering and browser reconnection are covered by additional deterministic
+checks. The package includes its complete validation report.
 Live verification covers the settings layout and Grok Bot zoom and reset.
 OpenAI shortcut behavior was inspected in the installed app's code; its UI
 was not automated. Native app updates may change their shortcut behavior.

@@ -93,7 +93,7 @@ internal sealed class AppCatalog
             var match = inventory.FirstOrDefault(item => definition.InstallNames.Contains(item.Name, StringComparer.OrdinalIgnoreCase));
             return definition with { LaunchTarget = match?.Target };
         }).Concat(custom).Where(entry => !removed.Contains(entry.Key)
-            && (entry.LaunchTarget is not null || open.Any(entry.Matches) || retained.Contains(entry.Key))).ToArray();
+            && (entry.Custom || entry.LaunchTarget is not null || open.Any(entry.Matches) || retained.Contains(entry.Key))).ToArray();
     }
     internal async Task<bool> Refresh(IEnumerable<string> attached, bool force = false)
     {
@@ -108,7 +108,8 @@ internal sealed class AppCatalog
                 nextScan = DateTimeOffset.Now.AddMinutes(1);
             }
             var found = Discover(installed, Native.Windows(), custom.Select(c => c.Entry), attached, hidden);
-            bool changed = !Available.Select(a => (a.Key, a.Name, a.LaunchTarget)).SequenceEqual(found.Select(a => (a.Key, a.Name, a.LaunchTarget)));
+            bool changed = !Available.Select(a => (a.Key, a.Name, a.LaunchTarget, a.Executable, a.WindowTitle))
+                .SequenceEqual(found.Select(a => (a.Key, a.Name, a.LaunchTarget, a.Executable, a.WindowTitle)));
             Available = found; return changed;
         }
         finally { scanning = false; }
@@ -125,6 +126,25 @@ internal sealed class AppCatalog
             AppEntry.IsBrowser(window.ProcessName) ? window.Title : null);
         Save([.. custom, connection]);
         return connection.Entry;
+    }
+    internal AppEntry Reconnect(string key, WindowInfo window)
+    {
+        var existing = custom.SingleOrDefault(c => c.Key == key)
+            ?? throw new InvalidOperationException("This saved connection no longer exists. Connect the window as a new AI.");
+        if (existing.WindowTitle is null)
+            throw new InvalidOperationException("Only saved browser connections need window reassignment.");
+        if (!AppEntry.IsBrowser(window.ProcessName) || string.IsNullOrWhiteSpace(window.Title)
+            || string.IsNullOrEmpty(window.Executable) || !Path.IsPathFullyQualified(window.Executable))
+            throw new InvalidOperationException("Choose an open browser window with a readable identity.");
+        if (custom.Any(c => c.Key != key && c.Entry.Matches(window)))
+            throw new InvalidOperationException("That browser window already belongs to another saved connection. Use that connection or choose a different window.");
+        // The user chooses this exact window. Keep the connection key so saved
+        // project membership survives a changed title or an explicit browser change.
+        var replacement = existing with { Executable = window.Executable, WindowTitle = window.Title };
+        Save(custom.Select(c => c.Key == key ? replacement : c).ToList());
+        Restore(key);
+        Available = Available.Select(a => a.Key == key ? replacement.Entry : a).ToArray();
+        return replacement.Entry;
     }
     internal void Forget(string key) => Save(custom.Where(c => c.Key != key).ToList());
     internal CustomConnection[] Connections => custom.ToArray();

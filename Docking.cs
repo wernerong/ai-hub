@@ -117,9 +117,11 @@ internal sealed class DockManager : IDisposable
         throw new InvalidOperationException("The window recovery helper could not start. No apps were attached.");
     }
 
-    internal async Task Attach(string key, WindowInfo window, nint parent)
+    internal async Task Attach(string key, WindowInfo window, nint parent, Func<bool>? canShow = null)
     {
         if (Has(key)) return;
+        if (windows.Any(pair => pair.Key != key && pair.Value.Handle == (long)window.Handle && pair.Value.Matches()))
+            throw new InvalidOperationException("That window is already connected to another AI in this workspace. Pop it out before assigning it again.");
         if (Native.GetParent(window.Handle) != 0) throw new InvalidOperationException("This app window already belongs to another window.");
         await EnsureGuard();
         var saved = SavedWindow.Capture(window.Handle);
@@ -129,12 +131,13 @@ internal sealed class DockManager : IDisposable
         Persist(); // Durable recovery record exists before the first window mutation.
         try
         {
-            Native.ShowWindow(window.Handle, Native.SW_RESTORE);
+            bool show = canShow?.Invoke() ?? true;
+            if (show) Native.ShowWindow(window.Handle, Native.SW_RESTORE);
             Native.ShowWindow(window.Handle, Native.SW_HIDE);
-            Native.ChangeStyle(window.Handle, Native.GWL_STYLE, saved.Style & ~Native.Frame & ~0x01000000L & ~0x20000000L);
+            Native.ChangeStyle(window.Handle, Native.GWL_STYLE, saved.Style & ~Native.Frame & ~0x01000000L & ~0x20000000L & ~0x10000000L);
             Native.ChangeStyle(window.Handle, Native.GWL_EXSTYLE, (saved.ExStyle & ~0x00040000L) | 0x80); // One hub taskbar entry; no forced ownership.
-            Native.Align(window.Handle, parent, true, true);
-            Native.ShowWindow(window.Handle, Native.SW_SHOWNA);
+            Native.Align(window.Handle, parent, show, true);
+            if (show) Native.ShowWindow(window.Handle, Native.SW_SHOWNA);
         }
         catch
         {

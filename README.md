@@ -6,7 +6,9 @@ A Windows desktop workspace for the AI apps you use. Installed or open AI apps
 appear in the sidebar automatically. Connect other desktop apps or dedicated
 browser windows with **Connect an AI**, keeping their existing accounts and
 conversations. A dark, cyan HUD shows available usage monitors with remaining
-allowance rings, reset countdowns and amber warnings.
+allowance rings, reset countdowns and amber warnings. Save projects with their
+AI apps, notes, links and window layout, then use the command palette to switch
+between projects and tools.
 
 ## Run
 
@@ -57,6 +59,47 @@ must be new so stale files cannot enter a release.
 
 ## Behavior and limits
 
+### Projects and session resume
+
+Version 0.6.0 adds **Projects** in the bar above the workspace. Choose **+ New
+project**, enter a name, check the AI apps you want, and add optional notes,
+web links or full folder paths. **Save current** saves those choices and the
+hub's current size, position and maximized state. **Open workspace** reconnects
+the project's apps and returns to its selected AI. Editing an existing project
+uses the same controls; unavailable or removed apps remain saved in the project.
+
+The last workspace resumes on startup by default. Turn **Resume the last
+workspace when AI Hub starts** off in Projects to start with the personal
+workspace instead. This preference saves immediately and independently of
+unsaved project edits. App selection and the latest window layout are remembered
+as you use or close the hub; notes and project membership require **Save current**.
+Saved windows are fitted to an available display when restored.
+
+Resume reconnects unambiguous app windows and can launch installed apps that
+have a known launcher. If an app is unavailable, a browser needs reassignment,
+or several windows could match, select the AI to finish connecting it. Project
+resources open only when you choose them. Notes stay in AI Hub unless you use
+**Copy project notes** and paste them elsewhere. AI Hub does not read chat
+history or restore an exact conversation inside a provider's app.
+
+Projects, notes, resources and resume preferences are stored locally in
+`%LOCALAPPDATA%\AIHub\workspaces.json`. Deleting a project removes its saved
+definition, not its AI apps, conversations or linked folders.
+
+### Command palette
+
+Select **Commands** or press **Ctrl+Alt+Space** to search available apps,
+projects and actions. Use the arrow keys and Enter to run a result, or Escape
+to cancel. **Ctrl+K** also opens the palette while AI Hub itself has focus.
+
+Commands include opening projects and apps, connecting or reconnecting an AI,
+opening project resources, copying project notes, refreshing usage and opening
+Settings. Search for **Change command shortcut** to choose **Ctrl+Alt+K**,
+**Ctrl+Alt+P**, the default **Ctrl+Alt+Space**, or **Disabled**. If another app
+owns a shortcut, AI Hub keeps the previous working choice. The Commands button
+and the in-hub Ctrl+K shortcut remain available. Preferences are local in
+`%LOCALAPPDATA%\AIHub\command-shortcut.json`.
+
 ### App discovery and connections
 
 Version 0.4.0 discovers OpenAI, Grok, Grok Bot, Claude, Gemini, Perplexity,
@@ -68,8 +111,16 @@ apps every minute. Hosted windows stay available while hidden by the hub.
 For another AI, select **+** in the sidebar, open its app, and choose its window.
 Use a separate browser window for a website: AI Hub hosts the whole window.
 Custom desktop connections remember the executable path; custom browser
-connections remember that path and the selected title. Reconnect a browser
-window if its title changes after it closes.
+connections remember that path and the selected title. Explicitly saved custom
+connections stay in the sidebar while closed, unless you remove them.
+
+If a saved browser's title changes, open the site in a dedicated browser window
+and select its AI Hub sidebar button to choose the replacement window. You can
+also select the window in **+ / Connect an AI**, choose the existing connection
+under **Saved browser connections**, and select **Reconnect saved browser**.
+Reconnection keeps the saved name and identity, so project membership survives
+without creating a duplicate. AI Hub does not guess which unrelated browser
+window belongs to a connection or automatically navigate it to a website.
 
 Right-click any AI's sidebar button and choose **Remove from AI Hub**. This
 restores its original window and remembers your choice across restarts, even
@@ -144,6 +195,8 @@ The icon was created with built-in image generation; its prompt is recorded in
 [Assets/icon-prompt.txt](Assets/icon-prompt.txt).
 Provider artwork is attributed in [Assets/Providers/README.txt](Assets/Providers/README.txt).
 See [CHANGELOG.md](CHANGELOG.md) for release history.
+See [the roadmap](docs/ROADMAP.md) for the planned cross-AI and public-product
+phases after v0.6.0.
 
 To exercise foreground activation with disposable windows, run
 `AIHub.exe --activation-test <absolute-output-folder>` and click **Run activation

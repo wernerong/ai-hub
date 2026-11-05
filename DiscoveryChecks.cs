@@ -32,6 +32,40 @@ internal static class DiscoveryChecks
         Check(web.Matches(browser) && !web.Matches(browser with { Title = "An unrelated tab" }) && web.LaunchTarget is null, "Custom web connections never adopt a different browser tab or launch a bare browser");
         var reload = new AppCatalog(path);
         Check(reload.Connections.Length == 2 && reload.Connections.Single(c => c.Key == web.Key).WindowTitle == browser.Title, "Named custom connections survive reload");
+        Check(AppCatalog.Discover([], [], reload.Connections.Select(c => c.Entry), []).Select(a => a.Key).ToHashSet().SetEquals([custom.Key, web.Key]),
+            "Saved desktop and browser connections stay available while their windows are closed");
+        Check(!AppCatalog.Discover([], [], reload.Connections.Select(c => c.Entry), [], [web.Key]).Any(a => a.Key == web.Key),
+            "A removed saved browser stays hidden even though closed connections remain discoverable");
+        var changedBrowser = browser with { Title = "A renamed conversation", ProcessName = "msedge", Executable = @"C:\ExampleBrowser\msedge.exe" };
+        web = reload.Reconnect(web.Key, changedBrowser);
+        Check(web.Name == "Web AI" && reload.Connections.Length == 2 && web.Matches(changedBrowser) && !web.Matches(browser),
+            "Explicit browser reconnection preserves the name and key while replacing the old window identity");
+        var reconnected = new AppCatalog(path).Connections.Single(c => c.Key == web.Key).Entry;
+        Check(reconnected.Matches(changedBrowser) && !reconnected.Matches(changedBrowser with { Title = "Unrelated page" }),
+            "Browser reassignment survives restart without broadening matching to unrelated windows");
+        string beforeInvalidReconnect = File.ReadAllText(path);
+        bool rejectedNative = false, rejectedMissing = false;
+        try { reload.Reconnect(web.Key, native); } catch (InvalidOperationException) { rejectedNative = true; }
+        try { reload.Reconnect("custom-missing", changedBrowser); } catch (InvalidOperationException) { rejectedMissing = true; }
+        Check(rejectedNative && rejectedMissing && File.ReadAllText(path) == beforeInvalidReconnect,
+            "Invalid or missing browser assignments are rejected without changing saved connections");
+        var otherBrowser = changedBrowser with { Title = "Another saved AI" };
+        var other = reload.Connect("Other web AI", otherBrowser);
+        bool rejectedDuplicate = false;
+        try { reload.Reconnect(web.Key, otherBrowser); } catch (InvalidOperationException) { rejectedDuplicate = true; }
+        Check(rejectedDuplicate && reload.Connections.Length == 3 && reload.Connections.Single(c => c.Key == web.Key).Entry.Matches(changedBrowser),
+            "Reconnecting cannot take a window already assigned to another custom connection");
+        reload.Forget(other.Key);
+        reload.Remove(web.Key); reload.Reconnect(web.Key, changedBrowser);
+        Check(!new AppCatalog(path).IsRemoved(web.Key) && reload.Connections.Length == 2,
+            "Explicitly reconnecting a removed browser restores the existing connection without duplication");
+        using (var reconnectDialog = new ConnectionDialog([native, changedBrowser], [], [], web))
+        {
+            var picker = Descendants(reconnectDialog).OfType<ListBox>().Single();
+            Check(picker.Items.Count == 1 && ((WindowInfo)picker.Items[0]!).ProcessName == "msedge"
+                && Descendants(reconnectDialog).OfType<TextBox>().Single().Text == "Web AI",
+                "The reconnection picker limits choices to browser windows and retains the saved name");
+        }
         reload.Remove("claude"); reload.Remove(custom.Key);
         reload = new AppCatalog(path);
         Check(reload.IsRemoved("claude") && reload.IsRemoved(custom.Key) && reload.Removed.Length == 2,

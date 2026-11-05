@@ -20,6 +20,9 @@ internal static class SelfTest
                 await CheckZoomSettings(folder, lines);
                 await UsageChecks.Run(folder, lines);
                 DiscoveryChecks.Run(folder, lines);
+                WorkspaceChecks.Run(folder, lines);
+                CommandChecks.Run(lines);
+                ProjectIntegrationChecks.CheckPlacement(lines);
                 ActivationChecks.CheckPolicy(lines);
                 await TaskbarChecks.Run(form.Handle, lines);
                 await UpdateChecks.Run(folder, lines);
@@ -34,6 +37,11 @@ internal static class SelfTest
                 Check(window is not null, "Disposable external app starts", lines);
                 var original = SavedWindow.Capture(window!.Handle);
                 await manager.Attach("sample", window, panel.Handle);
+                bool duplicateRejected = false;
+                try { await manager.Attach("duplicate", window, panel.Handle); }
+                catch (InvalidOperationException) { duplicateRejected = true; }
+                Check(duplicateRejected && manager.Windows.Count == 1 && manager.Windows["sample"].Style == original.Style,
+                    "A provider window cannot be captured twice under different AI identities", lines);
                 Check(Native.GetParent(window.Handle) == 0, "Grouped app keeps its independent top-level window", lines);
                 Check(Recovery.Read(Path.Combine(folder, "test-windows.json")).Single().Matches(), "Recovery record retains process identity", lines);
                 panel.Size = new Size(760, 480);
@@ -64,7 +72,10 @@ internal static class SelfTest
                 Check(!sample.HasExited, "Original app remains running", lines);
                 original.Pid = -1;
                 Check(!original.Matches(), "Recovery rejects stale or reused window identity", lines);
-                await manager.Attach("sample", window, panel.Handle);
+                await manager.Attach("sample", window, panel.Handle, () => false);
+                Check(!Native.IsWindowVisible(window.Handle), "An app connected while the hub is minimized stays hidden", lines);
+                manager.Select("sample", panel.Handle);
+                Check(Native.IsWindowVisible(window.Handle), "A hidden project attachment becomes visible when selected after restore", lines);
                 manager.RestoreAll();
                 Check(Native.GetParent(window.Handle) == 0 && Recovery.Read(Path.Combine(folder, "test-windows.json")).Count == 0, "Close cleanup restores apps and clears recovery records", lines);
                 var crashState = Path.Combine(folder, "crash-windows.json");

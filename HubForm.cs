@@ -2,7 +2,7 @@ using AIHub.Usage;
 
 namespace AIHub;
 
-internal sealed class HubForm : Form
+internal sealed partial class HubForm : Form
 {
     private static readonly Color Background = UsageStyle.Background, Surface = UsageStyle.Surface, Muted = UsageStyle.Muted, Ink = UsageStyle.Ink;
     private readonly AppCatalog catalog;
@@ -43,14 +43,18 @@ internal sealed class HubForm : Form
     private bool focusPresentation;
     private readonly WorkspaceActivation activation = new();
     private TaskbarToggle? taskbar;
+    private readonly bool isolated;
     private enum HubPage { Workspace, Settings, Usage }
     private HubPage page;
     private bool pageOpen => page != HubPage.Workspace;
     private bool navigationMenuOpen => navigation.Values.Any(button => button.ContextMenuStrip?.Visible == true);
 
-    internal HubForm(string statePath)
+    internal HubForm(string statePath, bool isolated = false)
     {
+        this.isolated = isolated;
         dock = new DockManager(statePath);
+        projects = new WorkspaceStore(Path.Combine(Path.GetDirectoryName(statePath)!, "workspaces.json"));
+        commandSettingsPath = Path.Combine(Path.GetDirectoryName(statePath)!, "command-shortcut.json");
         catalog = new AppCatalog(Path.Combine(Path.GetDirectoryName(statePath)!, "connections.json"));
         zoom = new ZoomSettings(Path.Combine(Path.GetDirectoryName(statePath)!, "zoom-settings.json"));
         usagePreferencesPath = Path.Combine(Path.GetDirectoryName(statePath)!, "usage-settings.json");
@@ -119,6 +123,7 @@ internal sealed class HubForm : Form
         main.Controls.Add(viewport);
         main.Controls.Add(status);
         main.Controls.Add(usageStrip);
+        main.Controls.Add(CreateProjectBar());
         main.Controls.Add(top);
         Controls.Add(main);
         Controls.Add(sidebar);
@@ -154,7 +159,7 @@ internal sealed class HubForm : Form
         Activated += (_, _) => { activation.Request(); if (taskbar?.Pending != true) QueueSelectedPresentation(); };
         Resize += (_, _) =>
         {
-            if (WindowState != FormWindowState.Minimized) return;
+            if (WindowState != FormWindowState.Minimized) { lastMaximized = WindowState == FormWindowState.Maximized; return; }
             activation.Cancel(); taskbar?.Cancel(); focusPresentation = false;
             dock.HideAll(); minimized = true;
         };
@@ -169,15 +174,22 @@ internal sealed class HubForm : Form
             timer.Start();
             usageTimer.Start();
             nextUsageRefresh = DateTimeOffset.Now.AddSeconds(5);
-            _ = RefreshDiscovery();
-            updateTimer.Start();
-            _ = updater.CheckAsync();
-            _ = Task.Run(() => UpdateInstaller.Cleanup(Path.Combine(Path.GetDirectoryName(statePath)!, "updates")));
+            InitializeCommands();
+            await RefreshDiscovery(true);
+            if (closing || IsDisposed) return;
+            await ResumeSession();
+            if (closing || IsDisposed) return;
+            if (!isolated)
+            {
+                updateTimer.Start();
+                _ = updater.CheckAsync();
+                _ = Task.Run(() => UpdateInstaller.Cleanup(Path.Combine(Path.GetDirectoryName(statePath)!, "updates")));
+            }
             if (!await taskbar.Ready && !closing) status.Text = "Could not enable taskbar toggling. The title-bar minimize button is still available.";
         };
         timer.Tick += (_, _) =>
         {
-            taskbar?.SetTarget(!closing && !busy && !pageOpen && WindowState != FormWindowState.Minimized
+            taskbar?.SetTarget(!closing && !busy && !modalOpen && !openingProject && !pageOpen && WindowState != FormWindowState.Minimized
                 && selected is not null && dock.Windows.TryGetValue(selected, out var activeWindow) && activeWindow.Matches() ? (nint)activeWindow.Handle : 0);
             if (taskbar?.Take(Control.MouseButtons != MouseButtons.None) == true)
             {
@@ -190,6 +202,7 @@ internal sealed class HubForm : Form
                 minimized = true;
                 return;
             }
+            if (modalOpen || openingProject) return;
             if (minimized)
             {
                 minimized = false;
@@ -203,11 +216,12 @@ internal sealed class HubForm : Form
             }
             if (selected is not null && !busy) ResizeSelected();
             if (activation.TakeRequest(selected is not null && !pageOpen && Native.GetForegroundWindow() == Handle,
-                busy || navigationMenuOpen || Control.MouseButtons != MouseButtons.None)) QueueSelectedPresentation(true);
+                busy || modalOpen || openingProject || navigationMenuOpen || Control.MouseButtons != MouseButtons.None)) QueueSelectedPresentation(true);
         };
         FormClosing += (_, e) =>
         {
-            if (busy) { e.Cancel = true; status.Text = "Wait for the app to finish connecting, then close the hub."; return; }
+            if (busy || openingProject || modalOpen) { e.Cancel = true; status.Text = "Wait for the current action to finish, then close the hub."; return; }
+            RememberSession();
             closing = true;
             timer.Stop();
             try { dock.RestoreAll(); }
@@ -216,6 +230,7 @@ internal sealed class HubForm : Form
         FormClosed += (_, _) =>
         {
             taskbar?.Dispose();
+            commandShortcut?.Dispose();
             updateTimer.Stop(); updateTimer.Dispose();
             updater.ApplyOnClose(restartForUpdate); updater.Dispose();
             usageTimer.Stop(); usage.Changed -= UsageChanged; usage.Dispose(); usageTimer.Dispose();
@@ -231,6 +246,11 @@ internal sealed class HubForm : Form
 
     protected override void WndProc(ref Message message)
     {
+        if (message.Msg == CommandShortcut.HotKeyMessage && commandShortcut is not null && message.WParam == commandShortcut.MessageId)
+        {
+            BeginInvoke((Action)(() => _ = ShowCommands()));
+            return;
+        }
         if (message.Msg == 0x0006 && ((long)message.WParam & 0xffff) != 0) taskbar?.Activated(message.LParam);
         base.WndProc(ref message);
     }
@@ -245,12 +265,14 @@ internal sealed class HubForm : Form
     private void ShowWelcome(string? message = null)
     {
         page = HubPage.Workspace;
+        detach.Enabled = selected is not null && dock.Has(selected);
         heading.Text = "Welcome to your workspace";
         ClearContent();
         empty.Padding = new Padding(IsHandleCreated ? (int)Math.Round(50f * DeviceDpi / 96f) : 50);
         var content = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
         content.Controls.Add(new Label { AutoSize = true, Text = "A home for every AI.", Font = new Font("Segoe UI Semibold", 30), ForeColor = Ink, Margin = new Padding(0, 35, 0, 18) });
         content.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(720, 0), Text = message ?? "Bring your existing apps into one window. Switch from a conversation to a coding task or an agent without juggling your desktop.", Font = new Font("Segoe UI", 13), ForeColor = Muted, Margin = new Padding(0, 0, 0, 38) });
+        AddProjectOverview(content);
         foreach (var entry in catalog.Available)
         {
             var button = MakeButton(entry.Name + "     /     " + entry.Description + "     →", async () => await Select(entry));
@@ -279,7 +301,8 @@ internal sealed class HubForm : Form
 
     private void ShowSettings()
     {
-        if (busy || closing) return;
+        if (busy || closing || modalOpen || openingProject) return;
+        CancelStartupResume();
         activation.Cancel();
         page = HubPage.Settings;
         focusPresentation = false;
@@ -307,9 +330,10 @@ internal sealed class HubForm : Form
         UpdateNavigation();
     }
 
-    private async Task Select(AppEntry entry, WindowInfo? explicitWindow = null)
+    private async Task Select(AppEntry entry, WindowInfo? explicitWindow = null, bool automatic = false, bool fromProject = false)
     {
-        if (busy || closing) return;
+        if (busy || closing || modalOpen || (openingProject && !fromProject)) return;
+        if (!automatic) CancelStartupResume();
         activation.Cancel();
         busy = true;
         try
@@ -320,6 +344,19 @@ internal sealed class HubForm : Form
                 var candidates = explicitWindow is null ? Native.Windows().Where(entry.Matches).ToList() : new List<WindowInfo> { explicitWindow };
                 if (candidates.Count == 0)
                 {
+                    if (entry.Custom && entry.WindowTitle is not null)
+                    {
+                        if (automatic) { connectionIssue = $"{entry.Name} needs reconnection. Open its browser window, then select the AI."; return; }
+                        using var reconnect = new ConnectionDialog(Native.Windows().Where(w => w.Pid != Environment.ProcessId && w.Executable is not null).ToArray(), catalog.Available, catalog.Removed, entry);
+                        dock.HideAll();
+                        if (reconnect.ShowDialog(this) != DialogResult.OK || reconnect.ChosenWindow is not { } browser) return;
+                        entry = catalog.Reconnect(entry.Key, browser);
+                        candidates.Add(browser);
+                    }
+                }
+                if (candidates.Count == 0)
+                {
+                    if (automatic && entry.LaunchTarget is null) { connectionIssue = $"Open {entry.Name}, then select it to reconnect."; return; }
                     entry.Launch();
                     for (int attempt = 0; attempt < 80; attempt++)
                     {
@@ -329,15 +366,18 @@ internal sealed class HubForm : Form
                     }
                 }
                 if (candidates.Count == 0) throw new InvalidOperationException($"{entry.Name} did not expose a matching window. Finish opening it, then select its tab again.");
+                if (automatic && candidates.Count > 1) { connectionIssue = $"Choose which {entry.Name} window to connect from the sidebar."; return; }
                 var chosen = candidates.Count == 1 ? candidates[0] : ChooseWindow(candidates);
                 if (chosen is null) { status.Text = "No window selected."; return; }
-                await dock.Attach(entry.Key, chosen, viewport.Handle);
+                await dock.Attach(entry.Key, chosen, viewport.Handle, () => WindowState != FormWindowState.Minimized && !modalOpen && !closing);
                 await RefreshDiscovery();
             }
             selected = entry.Key;
+            RememberSession();
             page = HubPage.Workspace;
             empty.Visible = false;
-            dock.Select(entry.Key, viewport.Handle);
+            if (WindowState == FormWindowState.Minimized) dock.HideAll();
+            else dock.Select(entry.Key, viewport.Handle);
             heading.Text = entry.Name + "   /   " + entry.Description;
             detach.Enabled = true;
             status.Text = entry.Key == "openai" ? "Use the OpenAI app's own ChatGPT, Codex and Dot controls. Your chats and account stay in that app." : $"{entry.Name} is connected. Click inside the app to use it.";
@@ -346,11 +386,12 @@ internal sealed class HubForm : Form
         }
         catch (Exception ex)
         {
-            if (!pageOpen && selected is not null && dock.Has(selected)) dock.Select(selected, viewport.Handle);
+            if (!pageOpen && selected is not null && dock.Has(selected) && WindowState != FormWindowState.Minimized) dock.Select(selected, viewport.Handle);
             status.Text = $"Could not connect {entry.Name}.";
-            MessageBox.Show(this, ex.Message, "AI Hub", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            connectionIssue = $"Could not connect {entry.Name}: {ex.Message}";
+            if (!automatic) MessageBox.Show(this, ex.Message, "AI Hub", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
-        finally { busy = false; UpdateStatusVisibility(); }
+        finally { busy = false; if (!pageOpen && selected is not null && !openingProject) QueueSelectedPresentation(true); UpdateStatusVisibility(); }
     }
 
     private WindowInfo? ChooseWindow(List<WindowInfo> windows)
@@ -370,7 +411,7 @@ internal sealed class HubForm : Form
 
     private void ResizeSelected()
     {
-        if (selected is null || pageOpen || closing || WindowState == FormWindowState.Minimized) return;
+        if (selected is null || pageOpen || closing || modalOpen || openingProject || WindowState == FormWindowState.Minimized) return;
         try { dock.Resize(selected, viewport.Handle, Native.GetForegroundWindow() == Handle || dock.IsForeground(selected)); }
         catch (Exception ex) { status.Text = "Resize failed: " + ex.Message; }
     }
@@ -386,7 +427,7 @@ internal sealed class HubForm : Form
             presentationQueued = false;
             bool activate = focusPresentation;
             focusPresentation = false;
-            if (closing || busy || pageOpen || selected is null || WindowState == FormWindowState.Minimized || taskbar?.Pending == true) return;
+            if (closing || busy || modalOpen || openingProject || pageOpen || selected is null || WindowState == FormWindowState.Minimized || taskbar?.Pending == true) return;
             // Windows finishes activating/raising the hub before its app is
             // placed above the content area. Do not steal focus from other apps.
             if (Native.GetForegroundWindow() != Handle && !dock.IsForeground(selected)) return;
@@ -432,6 +473,7 @@ internal sealed class HubForm : Form
             dock.Detach(selected);
             appliedZoom.Remove(selected);
             selected = null;
+            RememberSession();
             detach.Enabled = false;
             heading.Text = "Your workspace";
             ShowWelcome("The app is back in its own window. Select a tab to continue.");
@@ -446,6 +488,7 @@ internal sealed class HubForm : Form
             dock.RestoreAll();
             appliedZoom.Clear();
             selected = null;
+            RememberSession();
             detach.Enabled = false;
             heading.Text = "Your workspace";
             ShowWelcome("All apps are back in their own windows.");
@@ -470,7 +513,8 @@ internal sealed class HubForm : Form
 
     private void ShowUsage()
     {
-        if (busy || closing) return;
+        if (busy || closing || modalOpen || openingProject) return;
+        CancelStartupResume();
         page = HubPage.Usage;
         focusPresentation = false;
         dock.HideAll();
@@ -548,6 +592,7 @@ internal sealed class HubForm : Form
             if (closing || IsDisposed) return;
             availableMonitors = usageReaders.Providers.Where(p => UsageReaders.IsAvailable(p.Id)
                 || p.Id == "grokbot" && catalog.Available.Any(a => a.Key == "grokbot")).ToArray();
+            if (isolated) availableMonitors = [];
             SetMonitorAvailability();
             if (changed)
             {
@@ -582,7 +627,8 @@ internal sealed class HubForm : Form
 
     private async Task ConnectAI()
     {
-        if (busy || closing) return;
+        if (busy || closing || modalOpen || openingProject) return;
+        CancelStartupResume();
         activation.Cancel(); busy = true; dock.HideAll();
         try
         {
@@ -600,7 +646,8 @@ internal sealed class HubForm : Form
                 return;
             }
             if (dialog.ChosenWindow is not { } chosen) return;
-            var entry = catalog.Connect(dialog.ConnectionName, chosen);
+            if (dialog.ReconnectKey is { } reconnectKey) { dock.Detach(reconnectKey); appliedZoom.Remove(reconnectKey); }
+            var entry = dialog.ReconnectKey is { } savedKey ? catalog.Reconnect(savedKey, chosen) : catalog.Connect(dialog.ConnectionName, chosen);
             busy = false;
             await Select(entry, chosen);
         }
@@ -615,7 +662,7 @@ internal sealed class HubForm : Form
 
     private async Task RemoveAI(string key)
     {
-        if (busy || closing) return;
+        if (busy || closing || modalOpen || openingProject) return;
         activation.Cancel(); focusPresentation = false; busy = true;
         try
         {
