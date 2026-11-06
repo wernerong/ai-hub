@@ -194,13 +194,7 @@ internal sealed partial class HubForm : Form
         timer.Tick += (_, _) =>
         {
             ObservePaneFocus();
-            taskbar?.SetTargets(!closing && !busy && !modalOpen && !openingProject && !pageOpen && WindowState != FormWindowState.Minimized
-                ? VisibleWindowHandles() : []);
-            if (taskbar?.Take(Control.MouseButtons != MouseButtons.None) == true)
-            {
-                WindowState = FormWindowState.Minimized;
-                return;
-            }
+            if (TryMinimizeFromTaskbar()) return;
             if (WindowState == FormWindowState.Minimized)
             {
                 if (!minimized) dock.HideAll();
@@ -219,7 +213,7 @@ internal sealed partial class HubForm : Form
             }
             if (selected is not null && !busy) ResizeSelected();
             if (activation.TakeRequest(selected is not null && !pageOpen && Native.GetForegroundWindow() == Handle,
-                busy || modalOpen || openingProject || navigationMenuOpen || Control.MouseButtons != MouseButtons.None)) QueueSelectedPresentation(true);
+                busy || modalOpen || openingProject || navigationMenuOpen || taskbar?.Pending == true || Control.MouseButtons != MouseButtons.None)) QueueSelectedPresentation(true);
         };
         FormClosing += (_, e) =>
         {
@@ -249,6 +243,11 @@ internal sealed partial class HubForm : Form
 
     protected override void WndProc(ref Message message)
     {
+        if (message.Msg == TaskbarToggle.StateChangedMessage)
+        {
+            TryMinimizeFromTaskbar();
+            return;
+        }
         if (message.Msg == CommandShortcut.HotKeyMessage && commandShortcut is not null && message.WParam == commandShortcut.MessageId)
         {
             BeginInvoke((Action)(() => _ = ShowCommands()));
@@ -256,6 +255,15 @@ internal sealed partial class HubForm : Form
         }
         if (message.Msg == 0x0006 && ((long)message.WParam & 0xffff) != 0) taskbar?.Activated(message.LParam);
         base.WndProc(ref message);
+    }
+
+    private bool TryMinimizeFromTaskbar()
+    {
+        taskbar?.SetTargets(!closing && !busy && !modalOpen && !openingProject && !pageOpen && WindowState != FormWindowState.Minimized
+            ? VisibleWindowHandles() : []);
+        if (taskbar?.Take(Control.MouseButtons != MouseButtons.None) != true) return false;
+        WindowState = FormWindowState.Minimized;
+        return true;
     }
 
     private static Button MakeButton(string text, Action click)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.2 — 2026-11-06
+
+- Minimize the active AI workspace with one taskbar click even when Windows briefly focuses the taskbar or returns focus to a hosted pane.
+- Handle completed taskbar gestures promptly on the hub's message loop while retaining the timer as a fallback.
+- Preserve normal restore behavior from other apps, native hub minimization, modified clicks, dragging and taskbar previews.
+- Add deterministic coverage for shell focus transitions, either split pane, stale targets and gesture expiry.
+
 ## 0.7.1 — 2026-11-06
 
 - Stop hosted AI windows flickering during idle foreground maintenance by raising already-fitted windows without resizing them again.

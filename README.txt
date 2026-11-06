@@ -1,4 +1,10 @@
-AI Hub 0.7.1 — Windows desktop workspace
+AI Hub 0.7.2 — Windows desktop workspace
+
+0.7.2: Single-click taskbar minimize
+Click AI Hub's taskbar icon once to minimize an active hosted workspace.
+Click again to restore it. Focus transitions through the taskbar or either
+split pane no longer require another click. Returning from another app,
+modified clicks, dragging and taskbar previews keep normal Windows behavior.
 
 0.7.1: Stable hosted windows
 Fix flickering in hosted AI windows such as OpenAI / Codex when the workspace
@@ -103,7 +109,7 @@ window is hosted. AI Hub does not guess unrelated browser windows or navigate
 them automatically.
 
 0.5.0: Native Windows installer and removable AI apps
-Download AIHub-v0.7.0-windows-x64-Setup.exe from the latest release and
+Download AIHub-v0.7.2-windows-x64-Setup.exe from the latest release and
 double-click it. Close AI Hub first if upgrading. Setup installs for your
 Windows account with shortcuts and a native Windows Installed apps uninstaller.
 No PowerShell commands, execution-policy changes or administrator access are

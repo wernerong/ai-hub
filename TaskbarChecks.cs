@@ -6,7 +6,10 @@ internal static class TaskbarChecks
     {
         void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); lines.Add("PASS " + message); }
         var click = new TaskbarClick();
-        click.Begin(123, true, false, 100); click.Activate(true);
+        click.Begin(123, true, false, 100);
+        Check(click.Pending(110) && !click.Take(123, true, false, 110),
+            "An armed taskbar press holds focus restoration before hub activation without minimizing early");
+        click.Activate(true);
         Check(!click.Take(123, true, true, 120), "Taskbar toggle waits for the mouse button to be released");
         click.Release(true);
         Check(click.Take(123, true, false, 140) && !click.Take(123, true, false, 150), "A taskbar click minimizes the active AI workspace exactly once");
@@ -30,6 +33,70 @@ internal static class TaskbarChecks
         Check(!click.Take(123, true, false, 1050), "Opening a page or minimizing explicitly cancels a pending taskbar click");
         click.Begin(123, true, false, 1100); click.Release(true);
         Check(!click.Take(123, false, false, 1150) && !click.Take(123, true, false, 1200), "Another taskbar button does not minimize AI Hub without hub activation");
+
+        const int hubWindow = 9001, firstPane = 123, secondPane = 456, shell = 7001, unrelated = 8001;
+        var foreground = new TaskbarForeground(hubWindow);
+        Check(foreground.SetTargets([firstPane, secondPane]) && foreground.IsWorkspace(hubWindow)
+            && foreground.IsWorkspace(firstPane) && foreground.IsWorkspace(secondPane) && !foreground.IsWorkspace(unrelated),
+            "Taskbar foreground eligibility includes the hub and either visible split pane only");
+
+        foreground.Observe(firstPane, false);
+        Check(foreground.Observe(0, false) == firstPane,
+            "A temporary lack of a foreground window preserves the hosted origin through activation");
+        nint origin = foreground.Observe(shell, true);
+        click.Begin(origin, true, false, 2000);
+        Check(origin == firstPane && click.Pending(2010),
+            "A shell focus hop before the first taskbar press retains the active AI gesture");
+        foreground.Observe(hubWindow, false); click.Activate(true); click.Release(true);
+        Check(click.Take(origin, foreground.IsWorkspace(hubWindow), false, 2050)
+            && !click.Take(origin, foreground.IsWorkspace(hubWindow), false, 2060),
+            "AI to shell to hub activation minimizes on one released click exactly once");
+
+        foreground.Observe(secondPane, false);
+        origin = foreground.Observe(shell, true);
+        click.Begin(origin, true, false, 2100); click.Release(true);
+        foreground.Observe(hubWindow, false); click.Activate(true);
+        Check(origin == secondPane && click.Take(origin, foreground.IsWorkspace(hubWindow), false, 2150),
+            "The second split pane also minimizes on its first taskbar click through shell focus");
+
+        foreground.Observe(firstPane, false);
+        origin = foreground.Observe(shell, true);
+        click.Begin(origin, true, false, 2200);
+        foreground.Observe(hubWindow, false); click.Activate(true); click.Release(true);
+        foreground.Observe(firstPane, false);
+        Check(click.Take(origin, foreground.IsWorkspace(firstPane), false, 2250),
+            "A valid taskbar click still minimizes after focus returns to its AI before consumption");
+
+        foreground.Observe(firstPane, false);
+        foreground.Observe(unrelated, false);
+        origin = foreground.Observe(shell, true);
+        click.Begin(origin, true, false, 2300); click.Release(true);
+        foreground.Observe(hubWindow, false); click.Activate(true);
+        Check(origin == 0 && !click.Pending(2310) && !click.Take(origin, true, false, 2350),
+            "Returning through the taskbar from an unrelated app restores instead of minimizing the workspace");
+
+        foreground.Observe(secondPane, false);
+        origin = foreground.Observe(shell, true);
+        click.Begin(origin, true, false, 2400); click.Release(true);
+        Check(!click.Take(origin, foreground.IsWorkspace(secondPane), false, 2450),
+            "Remembered AI focus cannot minimize without activation of the hub taskbar button");
+        click.Cancel();
+
+        foreground.Observe(firstPane, false); foreground.Observe(hubWindow, false);
+        Check(foreground.Observe(shell, true) == 0,
+            "A taskbar press from the foreground hub leaves Windows native minimize behavior intact");
+        foreground.Observe(secondPane, false);
+        Check(!foreground.SetTargets([secondPane, firstPane, firstPane]) && foreground.Observe(shell, true) == secondPane,
+            "Refreshing unchanged visible panes preserves the remembered foreground AI");
+        Check(foreground.SetTargets([firstPane]) && foreground.Observe(shell, true) == 0
+            && !foreground.IsWorkspace(secondPane),
+            "Changing visible panes discards remembered taskbar focus from the old layout");
+        foreground.Observe(firstPane, false); foreground.SetTargets([]);
+        Check(foreground.Observe(shell, true) == 0 && !foreground.IsWorkspace(firstPane),
+            "Minimized or unavailable workspaces cannot arm a taskbar gesture from stale AI focus");
+        click.Begin(firstPane, true, false, 2500);
+        Check(!click.Pending(3501), "An unactivated taskbar press stops holding focus restoration after expiry");
+
         Check(TaskbarToggle.IsTaskbarClass("Shell_TrayWnd") && TaskbarToggle.IsTaskbarClass("Shell_SecondaryTrayWnd")
             && !TaskbarToggle.IsTaskbarClass("ApplicationFrameWindow"), "Primary and secondary Windows taskbars are recognized without treating app windows as taskbars");
         using var monitor = new TaskbarToggle(hub);
