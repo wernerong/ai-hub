@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 — 2026-11-06
+
+- Stop hosted AI windows flickering during idle foreground maintenance by raising already-fitted windows without resizing them again.
+- Preserve real resizing, constrained minimum-size fitting, split-pane focus and standalone window restoration.
+- Retry briefly locked recovery-file replacements using the existing bounded atomic-save helper.
+- Validate intermediate resize events in single and split panes, and provide a read-only window-geometry diagnostic.
+
 ## 0.7.0 — 2026-11-05
 
 - Show two AI apps side by side or stacked, with a cyan focused-pane header, a draggable divider and a command to swap panes.

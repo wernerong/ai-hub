@@ -18,6 +18,7 @@ internal static class SelfTest
             try
             {
                 await CheckZoomSettings(folder, lines);
+                await FlickerChecks.Run(folder, lines);
                 await UsageChecks.Run(folder, lines);
                 DiscoveryChecks.Run(folder, lines);
                 WorkspaceChecks.Run(folder, lines);

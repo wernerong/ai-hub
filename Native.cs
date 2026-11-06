@@ -9,7 +9,7 @@ internal static class Native
 {
     internal const int GWL_STYLE = -16, GWL_EXSTYLE = -20;
     internal const long Frame = 0x00C00000L | 0x00040000L | 0x00080000L | 0x00020000L | 0x00010000L;
-    internal const uint SWP_FRAMECHANGED = 0x20, SWP_NOACTIVATE = 0x10, SWP_NOZORDER = 0x4, SWP_NOSENDCHANGING = 0x400;
+    internal const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_FRAMECHANGED = 0x20, SWP_NOACTIVATE = 0x10, SWP_NOZORDER = 0x4, SWP_NOSENDCHANGING = 0x400;
     internal const int SW_HIDE = 0, SW_SHOWNOACTIVATE = 4, SW_SHOW = 5, SW_SHOWNA = 8, SW_RESTORE = 9;
     internal delegate bool EnumProc(nint window, nint parameter);
 
@@ -109,8 +109,17 @@ internal static class Native
     internal static void Align(nint hwnd, nint viewport, bool raise = false, bool frameChanged = false)
     {
         if (!GetWindowRect(viewport, out var rect)) throw new InvalidOperationException("The workspace is not available.");
-        GetWindowRect(hwnd, out var current);
-        if (!raise && !frameChanged && current.Left == rect.Left && current.Top == rect.Top && current.Right == rect.Right && current.Bottom == rect.Bottom) return;
+        bool haveBounds = GetWindowRect(hwnd, out var current);
+        if (haveBounds && !frameChanged && current.Left == rect.Left && current.Top == rect.Top
+            && current.Right == rect.Right && current.Bottom == rect.Bottom)
+        {
+            // Foreground maintenance must only change stacking order. Resizing a
+            // fitted app can reapply its standalone minimum, then shrink it again
+            // in the constrained fallback below on every idle timer tick.
+            if (raise && !SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
+                throw new Win32Exception(Marshal.GetLastPInvokeError());
+            return;
+        }
         uint flags = SWP_NOACTIVATE | (frameChanged ? SWP_FRAMECHANGED : 0) | (raise ? 0 : SWP_NOZORDER);
         int width = Math.Max(1, rect.Right - rect.Left), height = Math.Max(1, rect.Bottom - rect.Top);
         if (!SetWindowPos(hwnd, 0, rect.Left, rect.Top, width, height, flags))

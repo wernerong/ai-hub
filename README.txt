@@ -1,4 +1,10 @@
-AI Hub 0.7.0 — Windows desktop workspace
+AI Hub 0.7.1 — Windows desktop workspace
+
+0.7.1: Stable hosted windows
+Fix flickering in hosted AI windows such as OpenAI / Codex when the workspace
+is smaller than the app's standalone minimum height. Idle focus maintenance
+now leaves an already-fitted window's size unchanged, including in split view.
+Recovery-file saves also tolerate brief Windows file locks.
 
 0.7.0: Split view, context handoffs and local usage history
 Select Split view above the workspace, choose two different AIs, then Open

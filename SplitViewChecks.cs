@@ -70,6 +70,32 @@ internal static class SplitViewChecks
             && ((long)Native.GetWindowLong(window.Handle, Native.GWL_STYLE) & ~0x10000000L) == (original.Style & ~0x10000000L)
             && (long)Native.GetWindowLong(window.Handle, Native.GWL_EXSTYLE) == original.ExStyle;
 
+        string lockedState = Path.Combine(folder, "recovery-lock-" + Guid.NewGuid().ToString("N") + ".json");
+        var previous = new SavedWindow { Handle = 101, Pid = 11, StartTicks = 111 };
+        var replacement = new SavedWindow { Handle = 202, Pid = 22, StartTicks = 222 };
+        Recovery.Save(lockedState, [previous]);
+        Task saving;
+        bool prepared, pending, preserved;
+        using (var held = new FileStream(lockedState, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            saving = Task.Run(() => Recovery.Save(lockedState, [replacement]));
+            for (int i = 0; i < 100 && !File.Exists(lockedState + ".tmp") && !saving.IsCompleted; i++)
+                await Task.Delay(10);
+            await Task.Delay(60);
+            prepared = File.Exists(lockedState + ".tmp");
+            pending = !saving.IsCompleted;
+            var durable = Recovery.Read(lockedState);
+            preserved = durable.Count == 1 && durable[0].Handle == previous.Handle
+                && durable[0].Pid == previous.Pid && durable[0].StartTicks == previous.StartTicks;
+        }
+        await saving;
+        Check(prepared && pending && preserved,
+            "A temporary recovery-file lock preserves the previous durable window identity while replacement waits");
+        var replaced = Recovery.Read(lockedState);
+        Check(replaced.Count == 1 && replaced[0].Handle == replacement.Handle && replaced[0].Pid == replacement.Pid
+            && replaced[0].StartTicks == replacement.StartTicks && !File.Exists(lockedState + ".tmp"),
+            "Releasing a temporary recovery-file lock commits the replacement window identity atomically");
+
         string statePath = Path.Combine(folder, "split-windows-" + Guid.NewGuid().ToString("N") + ".json");
         using var host = new Form { Text = "AI Hub split validation", ShowInTaskbar = false,
             Size = new Size(1120, 680), StartPosition = FormStartPosition.Manual, Location = new Point(-3000, -2000) };

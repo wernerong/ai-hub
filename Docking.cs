@@ -62,7 +62,7 @@ internal static class Recovery
     internal static void Save(string path, IEnumerable<SavedWindow> windows)
     {
         File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(windows, Json));
-        File.Move(path + ".tmp", path, true);
+        LocalFile.Replace(path + ".tmp", path);
     }
     internal static void RestoreFile(string path)
     {

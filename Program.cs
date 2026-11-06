@@ -10,6 +10,23 @@ internal static class Program
     {
         if (args.Contains("--dpi-v1")) Application.SetHighDpiMode(HighDpiMode.PerMonitor);
         ApplicationConfiguration.Initialize();
+        if (args.Length == 3 && args[0] == "--flicker-diagnostics")
+        {
+            FlickerChecks.Watch(args[1], args[2]); return;
+        }
+        if (args.Length == 2 && args[0] == "--flicker-test")
+        {
+            Directory.CreateDirectory(args[1]);
+            var lines = new List<string>();
+            using var host = new Form { ShowInTaskbar = false, StartPosition = FormStartPosition.Manual, Location = new Point(-4000, -3000) };
+            host.Shown += async (_, _) =>
+            {
+                try { await FlickerChecks.Run(args[1], lines); }
+                catch (Exception ex) { lines.Add("FAIL " + ex); Environment.ExitCode = 1; }
+                finally { File.WriteAllLines(Path.Combine(args[1], "flicker-validation.txt"), lines); host.Close(); }
+            };
+            Application.Run(host); return;
+        }
         if (args.Length == 2 && args[0] == "--workspace-preview")
         {
             ProjectIntegrationChecks.Show(args[1]); return;
