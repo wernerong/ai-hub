@@ -18,6 +18,12 @@ internal sealed class TaskbarClick
         target = hosted; started = now;
     }
     internal void Release(bool validClick) { if (!validClick) Cancel(); else released = target != 0; }
+    internal void Release(nint foreground, bool onTaskbar, bool workspaceForeground, bool taskbarForeground)
+    {
+        // Explorer may temporarily leave no foreground window during mouse-up.
+        // Keep the captured press until hub activation confirms its destination.
+        Release(onTaskbar && (foreground == 0 || workspaceForeground || taskbarForeground));
+    }
     internal void Activate(bool sameWorkspace) { if (!sameWorkspace) Cancel(); else activated = target != 0; }
     internal bool Pending(long now) => target != 0 && now - started <= 1000;
     internal bool Take(nint selected, bool workspaceForeground, bool inputHeld, long now)
@@ -187,7 +193,7 @@ internal sealed class TaskbarToggle : IDisposable
                         pressed = false;
                         nint current = Native.GetForegroundWindow();
                         TrackForeground(current);
-                        click.Release(IsTaskbarPoint(input.Point) && (foreground.IsWorkspace(WorkspaceRoot(current)) || IsTaskbarWindow(current)));
+                        click.Release(current, IsTaskbarPoint(input.Point), foreground.IsWorkspace(WorkspaceRoot(current)), IsTaskbarWindow(current));
                         if (click.Pending(Environment.TickCount64)) PostMessage(hub, StateChangedMessage, 0, 0);
                     }
                 }

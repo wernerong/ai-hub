@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.3 — 2026-11-06
+
+- Fix the remaining single-click taskbar failure when Windows temporarily reports no foreground window at mouse-up.
+- Retain the captured click through that gap while still requiring hub activation before minimizing; keep unrelated-window and off-taskbar releases rejected.
+- Add regression checks replaying the recorded failure and verify single-click minimize and restore on the user's secondary taskbar.
+
 ## 0.7.2 — 2026-11-06
 
 - Minimize the active AI workspace with one taskbar click even when Windows briefly focuses the taskbar or returns focus to a hosted pane.

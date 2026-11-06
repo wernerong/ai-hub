@@ -97,6 +97,26 @@ internal static class TaskbarChecks
         click.Begin(firstPane, true, false, 2500);
         Check(!click.Pending(3501), "An unactivated taskbar press stops holding focus restoration after expiry");
 
+        // Replay the captured Windows secondary-taskbar sequence: the hosted
+        // AI owns mouse-down, foreground is zero at mouse-up, then the hub activates.
+        click.Begin(firstPane, true, false, 4000);
+        click.Release(0, onTaskbar: true, workspaceForeground: false, taskbarForeground: false);
+        Check(click.Pending(4100) && !click.Take(firstPane, false, false, 4100),
+            "Taskbar mouse-up without a foreground window retains the click but waits for hub activation");
+        click.Activate(true);
+        Check(click.Take(firstPane, true, false, 4150) && !click.Take(firstPane, true, false, 4160),
+            "The recorded secondary-taskbar foreground gap minimizes exactly once after hub activation");
+        click.Begin(firstPane, true, false, 4200);
+        click.Release(unrelated, onTaskbar: true, workspaceForeground: false, taskbarForeground: false);
+        click.Activate(true);
+        Check(!click.Take(firstPane, true, false, 4250),
+            "Mouse-up with a known unrelated foreground window still cancels the taskbar gesture");
+        click.Begin(firstPane, true, false, 4300);
+        click.Release(0, onTaskbar: false, workspaceForeground: false, taskbarForeground: false);
+        click.Activate(true);
+        Check(!click.Take(firstPane, true, false, 4350),
+            "A zero foreground window cannot validate mouse-up outside the taskbar");
+
         Check(TaskbarToggle.IsTaskbarClass("Shell_TrayWnd") && TaskbarToggle.IsTaskbarClass("Shell_SecondaryTrayWnd")
             && !TaskbarToggle.IsTaskbarClass("ApplicationFrameWindow"), "Primary and secondary Windows taskbars are recognized without treating app windows as taskbars");
         using var monitor = new TaskbarToggle(hub);

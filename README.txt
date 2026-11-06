@@ -1,4 +1,9 @@
-AI Hub 0.7.2 — Windows desktop workspace
+AI Hub 0.7.3 — Windows desktop workspace
+
+0.7.3: Taskbar mouse-up correction
+Fix the remaining extra-click case when Windows briefly has no foreground
+window as the taskbar button is released. Single-click minimize and restore
+were verified on a secondary monitor's taskbar.
 
 0.7.2: Single-click taskbar minimize
 Click AI Hub's taskbar icon once to minimize an active hosted workspace.
@@ -109,7 +114,7 @@ window is hosted. AI Hub does not guess unrelated browser windows or navigate
 them automatically.
 
 0.5.0: Native Windows installer and removable AI apps
-Download AIHub-v0.7.2-windows-x64-Setup.exe from the latest release and
+Download AIHub-v0.7.3-windows-x64-Setup.exe from the latest release and
 double-click it. Close AI Hub first if upgrading. Setup installs for your
 Windows account with shortcuts and a native Windows Installed apps uninstaller.
 No PowerShell commands, execution-policy changes or administrator access are
