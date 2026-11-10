@@ -34,6 +34,9 @@ internal static class Native
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)] internal static extern nint GetWindowLong(nint hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)] private static extern nint SetWindowLong(nint hwnd, int index, nint value);
     [DllImport("user32.dll")] internal static extern bool ShowWindow(nint hwnd, int command);
+    [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
+    private static extern bool PostMessage(nint hwnd, uint message, nuint wParam, nint lParam);
+    internal static bool PostClose(nint hwnd) => PostMessage(hwnd, 0x0010, 0, 0); // WM_CLOSE preserves the app's save/cancel behavior.
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool GetWindowPlacement(nint hwnd, ref Placement placement);
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowPlacement(nint hwnd, ref Placement placement);

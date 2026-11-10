@@ -217,12 +217,22 @@ internal sealed partial class HubForm : Form
         };
         FormClosing += (_, e) =>
         {
-            if (busy || openingProject || modalOpen) { e.Cancel = true; status.Text = "Wait for the current action to finish, then close the hub."; return; }
+            if (busy || openingProject || modalOpen) { restartForUpdate = false; e.Cancel = true; status.Text = "Wait for the current action to finish, then close the hub."; return; }
             RememberSession();
             closing = true;
             timer.Stop();
-            try { dock.RestoreAll(); }
-            catch (Exception ex) { closing = false; timer.Start(); e.Cancel = true; MessageBox.Show("An app could not be restored yet. Keep the hub open and try Restore all again.\n\n" + ex.Message, "AI Hub"); }
+            try
+            {
+                // An update restart reconnects this same workspace. A normal exit
+                // closes every still-connected AI, including inactive tabs.
+                if (restartForUpdate) dock.RestoreAll();
+                else dock.CloseAll();
+            }
+            catch (Exception ex)
+            {
+                restartForUpdate = false; closing = false; timer.Start(); e.Cancel = true;
+                MessageBox.Show("An app could not be released or asked to close. Try closing AI Hub again, or use Restore all to keep the apps open.\n\n" + ex.Message, "AI Hub");
+            }
         };
         FormClosed += (_, _) =>
         {
@@ -304,7 +314,7 @@ internal sealed partial class HubForm : Form
         }
         var connect = MakeButton("+  Connect an AI", async () => await ConnectAI());
         connect.Size = new Size(240, 48); connect.ForeColor = UsageStyle.Good; content.Controls.Add(connect);
-        content.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(680, 0), Text = "Installed and open AI apps appear automatically. Connect any other AI through its desktop app or a dedicated browser window.\n\nYour apps keep their own accounts. Pop out returns a window to your desktop; closing AI Hub restores every connected window.", Font = new Font("Segoe UI", 10), ForeColor = Muted, Margin = new Padding(0, 24, 0, 0) });
+        content.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(680, 0), Text = "Installed and open AI apps appear automatically. Connect any other AI through its desktop app or a dedicated browser window.\n\nYour apps keep their own accounts. Closing AI Hub closes connected AI windows. Use Pop out or Restore all to keep them open independently.", Font = new Font("Segoe UI", 10), ForeColor = Muted, Margin = new Padding(0, 24, 0, 0) });
         if (IsHandleCreated) content.Scale(new SizeF(DeviceDpi / 96f, DeviceDpi / 96f));
         empty.Controls.Add(content);
         empty.Visible = true;

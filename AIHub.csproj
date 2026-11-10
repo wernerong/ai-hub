@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>AIHub</AssemblyName>
-    <Version>0.7.3</Version>
+    <Version>0.7.4</Version>
     <ApplicationIcon>Assets\AIHub.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>

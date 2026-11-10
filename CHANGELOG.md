@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.4 — 2026-11-10
+
+- Close all connected AI windows on normal exit, including hidden tabs and both split panes, using each app's normal close request.
+- Restore native window controls before closing so save prompts and cancelled closes remain usable; never terminate provider processes.
+- Clear recovery records before requesting closure so apps that close to the tray stay closed after the hub exits.
+- Preserve independent windows released with Pop out, Restore all, app removal or project switching; keep AI windows open across update restarts and crash recovery.
+- Keep failed close requests recoverable and allow retrying the exit.
+
 ## 0.7.3 — 2026-11-06
 
 - Fix the remaining single-click taskbar failure when Windows temporarily reports no foreground window at mouse-up.

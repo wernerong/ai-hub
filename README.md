@@ -27,14 +27,19 @@ PowerShell installation scripts are retained for compatibility; **Setup.exe**
 is the recommended installation method.
 The .NET runtime is included. Open or install your AI apps separately.
 
-The version stays visible in the title bar and sidebar. **Pop out** restores
-one app's original window; **Restore all** or closing the hub restores them all.
+The version stays visible in the title bar and sidebar. Closing AI Hub also
+asks every connected AI window to close, including inactive tabs and split panes.
+Each app keeps its normal save prompts and close-to-tray behavior; processes
+are never force-terminated. **Pop out** releases one window, and **Restore all**
+releases all windows to stay open independently. Windows released by those actions,
+removing an AI or switching projects are no longer closed with the hub.
 
 ## Automatic updates
 
 Version 0.3.0 is the first public release. It checks published stable GitHub
 releases at startup and every six hours, verifies the download's SHA-256 digest,
-and installs when AI Hub closes after restoring its app windows. In **Settings**,
+and installs when AI Hub closes. **Restart to update** keeps connected AI windows
+open so the restarted hub can reconnect them. In **Settings**,
 choose **Check for updates**, **Restart to update**, or turn automatic updates off.
 Updates do not need a GitHub account. Builds before 0.3.0 need one manual upgrade.
 Your provider accounts, zoom choices and usage preferences stay in place.

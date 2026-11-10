@@ -1,4 +1,11 @@
-AI Hub 0.7.3 — Windows desktop workspace
+AI Hub 0.7.4 — Windows desktop workspace
+
+0.7.4: Close connected AI windows on exit
+Closing AI Hub asks all connected AI windows to close, including inactive tabs
+and split panes. Each app keeps its normal save prompts and close-to-tray
+behavior. Pop out, Restore all, removing an AI and switching projects release
+windows to stay open independently. Restart to update and crash recovery keep
+AI windows open. Provider processes are never force-terminated.
 
 0.7.3: Taskbar mouse-up correction
 Fix the remaining extra-click case when Windows briefly has no foreground
@@ -167,8 +174,8 @@ writable folder. Legacy PowerShell scripts remain for compatibility.
 
 Updates check published stable releases at startup and every six hours.
 The SHA-256 digest and executable version are verified before installation.
-Downloaded updates install when you close AI Hub, after grouped windows are
-restored. Settings offers Check for updates, Restart to update and an automatic
+Downloaded updates install when you close AI Hub. Restart to update keeps
+AI windows open. Settings offers Check for updates, Restart to update and an automatic
 update switch. Failed replacement rolls back the files. Provider accounts,
 zoom and usage preferences are retained. No GitHub login or Actions minutes
 are needed. Earlier builds require this one manual upgrade to gain updates.
@@ -244,7 +251,7 @@ If an app has multiple windows, choose the one to bring into the workspace.
 Click inside the selected app to type and work normally.
 
 Pop out returns the current app to its original window. Restore all returns
-every app. Closing AI Hub restores grouped windows without quitting the apps.
+every app. Closing AI Hub asks all still-connected AI windows to close.
 
 How it works
 AI Hub groups the original app windows visually with a shared sidebar and
@@ -258,7 +265,7 @@ This preview is intended for a single Windows workspace. Dragging between
 monitors, virtual desktops, native app full-screen commands, voice/video,
 file dialogs and accessibility tools still need broader compatibility testing.
 Alt+F4 while typing in an AI app can close that original app; use the hub's
-own close button to close the hub and restore all app windows.
+own close button to close the hub and its connected AI windows.
 
 Window recovery
 The hub saves original window styles, positions and process identity in

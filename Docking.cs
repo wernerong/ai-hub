@@ -243,6 +243,38 @@ internal sealed class DockManager : IDisposable
             try { Detach(key); } catch (Exception ex) { failures.Add(ex.Message); }
         if (failures.Count > 0) throw new InvalidOperationException(string.Join(Environment.NewLine, failures));
     }
+    internal void CloseAll()
+    {
+        List<string> failures = [];
+        foreach (var (key, saved) in windows.ToArray())
+        {
+            try
+            {
+                // Restore the native frame first so an app can show its own save
+                // prompt or cancel closing without being left hidden or borderless.
+                saved.Restore();
+                // Commit the release before posting WM_CLOSE. A close-to-tray app
+                // must not be reopened by the recovery helper after the hub exits.
+                Recovery.Save(statePath, windows.Where(pair => pair.Key != key).Select(pair => pair.Value));
+                try
+                {
+                    if (saved.Matches() && !Native.PostClose((nint)saved.Handle))
+                    {
+                        var error = new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
+                        if (saved.Matches()) throw error; // It may already have closed on its own.
+                    }
+                }
+                catch
+                {
+                    Persist(); // Retain a failed request for recovery or a retry.
+                    throw;
+                }
+                windows.Remove(key);
+            }
+            catch (Exception ex) { failures.Add($"{key}: {ex.Message}"); }
+        }
+        if (failures.Count > 0) throw new InvalidOperationException(string.Join(Environment.NewLine, failures));
+    }
     private void Persist() => Recovery.Save(statePath, windows.Values);
     public void Dispose()
     {

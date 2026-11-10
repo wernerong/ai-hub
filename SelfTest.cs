@@ -32,6 +32,7 @@ internal static class SelfTest
                 ActivationChecks.CheckPolicy(lines);
                 await TaskbarChecks.Run(form.Handle, lines);
                 await UpdateChecks.Run(folder, lines);
+                await ShutdownChecks.Run(folder, lines);
                 sample = Program.StartSelf("--sample");
                 WindowInfo? window = null;
                 for (int i = 0; i < 80; i++)
@@ -83,7 +84,7 @@ internal static class SelfTest
                 manager.Select("sample", panel.Handle);
                 Check(Native.IsWindowVisible(window.Handle), "A hidden project attachment becomes visible when selected after restore", lines);
                 manager.RestoreAll();
-                Check(Native.GetParent(window.Handle) == 0 && Recovery.Read(Path.Combine(folder, "test-windows.json")).Count == 0, "Close cleanup restores apps and clears recovery records", lines);
+                Check(Native.GetParent(window.Handle) == 0 && Recovery.Read(Path.Combine(folder, "test-windows.json")).Count == 0, "Restore all releases apps and clears recovery records", lines);
                 var crashState = Path.Combine(folder, "crash-windows.json");
                 using (var crashHost = Program.StartSelf("--crash-host", ((long)window.Handle).ToString(), window.Pid.ToString(), crashState))
                 {
@@ -95,8 +96,12 @@ internal static class SelfTest
                     Check(!sample.HasExited && Native.IsWindow(window.Handle) && Native.GetParent(window.Handle) == 0 && Recovery.Read(crashState).Count == 0 && ((long)Native.GetWindowLong(window.Handle, Native.GWL_STYLE) & ~0x10000000L) == (original.Style & ~0x10000000L), "Recovery helper restores the running app after abrupt hub termination", lines);
                     File.Delete(crashState + ".attached");
                 }
-                sample.CloseMainWindow();
-                await sample.WaitForExitAsync();
+                await manager.Attach("shutdown", window, panel.Handle, () => false);
+                manager.CloseAll();
+                for (int i = 0; i < 100 && !sample.HasExited; i++) await Task.Delay(50);
+                Check(sample.HasExited && manager.Windows.Count == 0
+                    && Recovery.Read(Path.Combine(folder, "test-windows.json")).Count == 0,
+                    "Graceful shutdown closes an external AI process after crash recovery and clears its recovery state", lines);
                 sample.Dispose();
                 sample = Program.StartSelf("--sample", "--dpi-v1");
                 window = null;
