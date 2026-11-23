@@ -9,12 +9,13 @@ internal static class DiscoveryChecks
         void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); lines.Add("PASS " + message); }
         InstalledApp[] three = [new("ChatGPT", "chatgpt.lnk"), new("Grok", "grok.lnk"), new("Grok Bot", "bot.lnk")];
         var found = AppCatalog.Discover(three, [], [], []);
-        Check(found.Select(a => a.Key).SequenceEqual(new[] { "openai", "grok", "grokbot" }), "Only the installed AI apps appear; absent Claude is omitted");
-        Check(AppCatalog.Discover([], [], [], []).Length == 0, "A new machine has no hard-coded provider placeholders");
+        Check(found.Select(a => a.Key).SequenceEqual(new[] { "copilot", "openai", "grok", "grokbot" }), "Built-in Copilot and installed AI apps appear; absent Claude is omitted");
+        Check(AppCatalog.Discover([], [], [], []).Single().Key == "copilot", "Built-in Copilot setup is available without VS Code or any external AI app");
         var claude = new WindowInfo(1, 11, "Claude", "My conversation");
-        Check(AppCatalog.Discover([], [claude], [], []).Single().Key == "claude", "An open AI app is discovered without an installed shortcut");
-        Check(AppCatalog.Discover([], [], [], ["claude"]).Single().Key == "claude", "A hidden hosted app stays connected during navigation");
-        Check(AppCatalog.Discover([], [], [], []).Length == 0 && found.Length == 3, "Closed open-only apps disappear while installed apps stay available");
+        Check(AppCatalog.Discover([], [claude], [], []).Where(a => !a.BuiltIn).Single().Key == "claude", "An open AI app is discovered without an installed shortcut");
+        Check(AppCatalog.Discover([], [], [], ["claude"]).Where(a => !a.BuiltIn).Single().Key == "claude", "A hidden hosted app stays connected during navigation");
+        Check(AppCatalog.Discover([], [], [], []).Length == 1 && found.Length == 4, "Closed open-only apps disappear while installed apps and built-in Copilot stay available");
+        Check(AppCatalog.Discover([], [], [], [], ["copilot"]).Length == 0, "Built-in Copilot respects removal like other AI destinations");
         var grok = AppEntry.All.Single(a => a.Key == "grok");
         Check(grok.Matches(new(1, 11, "chrome", "Grok - Google Chrome")) && grok.Matches(new(1, 11, "msedge", "Research - Grok"))
             && !grok.Matches(new(1, 11, "notepad", "Grok")) && !grok.Matches(new(1, 11, "chrome", "Grok Bot")), "Browser detection uses provider titles and browser identity without confusing Grok Bot");
@@ -32,7 +33,7 @@ internal static class DiscoveryChecks
         Check(web.Matches(browser) && !web.Matches(browser with { Title = "An unrelated tab" }) && web.LaunchTarget is null, "Custom web connections never adopt a different browser tab or launch a bare browser");
         var reload = new AppCatalog(path);
         Check(reload.Connections.Length == 2 && reload.Connections.Single(c => c.Key == web.Key).WindowTitle == browser.Title, "Named custom connections survive reload");
-        Check(AppCatalog.Discover([], [], reload.Connections.Select(c => c.Entry), []).Select(a => a.Key).ToHashSet().SetEquals([custom.Key, web.Key]),
+        Check(AppCatalog.Discover([], [], reload.Connections.Select(c => c.Entry), []).Where(a => !a.BuiltIn).Select(a => a.Key).ToHashSet().SetEquals([custom.Key, web.Key]),
             "Saved desktop and browser connections stay available while their windows are closed");
         Check(!AppCatalog.Discover([], [], reload.Connections.Select(c => c.Entry), [], [web.Key]).Any(a => a.Key == web.Key),
             "A removed saved browser stays hidden even though closed connections remain discoverable");
@@ -72,7 +73,7 @@ internal static class DiscoveryChecks
             "Removing built-in and custom apps persists across restarts and keeps their add-back entries");
         var removedKeys = reload.Removed.Select(a => a.Key).ToArray();
         Check(AppCatalog.Discover([.. three, new("Claude", "claude.lnk")], [claude, native], [custom], ["claude", custom.Key], removedKeys)
-            .Select(a => a.Key).SequenceEqual(new[] { "openai", "grok", "grokbot" }),
+            .Select(a => a.Key).SequenceEqual(new[] { "copilot", "openai", "grok", "grokbot" }),
             "Removed apps stay out of discovery even when installed, open or previously attached; other apps remain");
         reload.Restore("claude");
         Check(!new AppCatalog(path).IsRemoved("claude") && reload.IsRemoved(custom.Key), "Adding a built-in app back persists without restoring other removed apps");
@@ -93,6 +94,14 @@ internal static class DiscoveryChecks
         strip.Configure(readers.Providers.Take(1).ToArray()); strip.Update([new("codex", true)]);
         Check(strip.Controls.Count == 1, "Compact usage strip adapts to one monitor"); strip.Configure([]);
         Check(strip.Controls.Count == 0 && !strip.Visible, "No monitor means no empty usage strip");
+        strip.SetAgentStatus("Copilot · context 100 / 1000 tokens", () => { });
+        Check(strip.Controls.Count == 1 && strip.Visible && strip.Controls[0].AccessibleName?.Contains("context") == true,
+            "Copilot session context appears separately without inventing an account allowance");
+        strip.Configure(readers.Providers); strip.SetAgentStatus("Copilot · waiting for approval", () => { });
+        Check(strip.Controls.Count == 4 && strip.ColumnCount == 4 && strip.RowCount == 1
+            && strip.Controls.Cast<Control>().All(c => strip.GetRow(c) == 0), "Copilot status shares one visible row with existing quota monitors");
+        strip.Configure([]); strip.SetAgentStatus(null, () => { });
+        Check(strip.Controls.Count == 0 && !strip.Visible, "Removing Copilot status leaves no empty strip");
         using var fallback = new ProviderButton(web, () => { });
         Check(fallback.AccessibleName == "Open Web AI", "Custom apps get a usable icon and accessible navigation label");
         File.Delete(path);

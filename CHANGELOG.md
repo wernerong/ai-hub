@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0 — 2026-11-23
+
+- Add a built-in GitHub Copilot chat panel over ACP, with streamed responses, advertised model choices, tool activity, explicit permission controls and cancellation.
+- Set up the verified official native Copilot runtime from AI Hub and sign in through GitHub, independently of VS Code, Node.js or a terminal installation.
+- Save separate chats and working folders for each project and personal workspace; resume native sessions while preserving local history on connection failures.
+- Keep drafts when reconnecting or reselecting the Copilot tab, restore replayed conversation history, and move chats from deleted projects into the personal workspace.
+- Show Copilot session status and reported context-token usage in the bottom strip, separately from account allowance readings.
+- Keep hosted-window docking and split view; open Copilot in its own full workspace and allow removing or restoring its sidebar entry.
+- Stop and save owned Copilot sessions during project changes and exit, while preserving existing app-window shutdown and recovery behavior.
+
 ## 0.7.4 — 2026-11-10
 
 - Close all connected AI windows on normal exit, including hidden tabs and both split panes, using each app's normal close request.

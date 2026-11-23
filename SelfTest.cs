@@ -33,6 +33,11 @@ internal static class SelfTest
                 await TaskbarChecks.Run(form.Handle, lines);
                 await UpdateChecks.Run(folder, lines);
                 await ShutdownChecks.Run(folder, lines);
+                CopilotRuntimeChecks.Run(folder, lines);
+                await CopilotAcpChecks.Run(lines);
+                CopilotChatChecks.Run(folder, lines);
+                CopilotArchiveChecks.Run(folder, lines);
+                await CopilotHubChecks.Run(folder, lines);
                 sample = Program.StartSelf("--sample");
                 WindowInfo? window = null;
                 for (int i = 0; i < 80; i++)

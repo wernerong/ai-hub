@@ -13,7 +13,9 @@ internal sealed record AppEntry(string Key, string Name, string Description, str
     internal string? Executable { get; init; }
     internal string? WindowTitle { get; init; }
     internal bool Custom => Key.StartsWith("custom-", StringComparison.Ordinal);
+    internal bool BuiltIn => Key == "copilot";
     internal static readonly AppEntry[] All = [
+        new("copilot", "Copilot", "Built-in chat · GitHub models", "C", Color.FromArgb(167, 185, 255)),
         new("openai", "OpenAI", "ChatGPT · Codex · Dot", "O", Color.FromArgb(106, 229, 205)) { Processes = ["ChatGPT", "Codex"], InstallNames = ["ChatGPT", "Codex", "OpenAI"], WebNames = ["ChatGPT"] },
         new("grok", "Grok", "Chat · Search · Imagine", "G", Color.FromArgb(205, 236, 255)) { Processes = ["Grok"], InstallNames = ["Grok"], WebNames = ["Grok"] },
         new("grokbot", "Grok Bot", "Your Cursor teammates", "B", Color.FromArgb(184, 167, 255)) { Processes = ["Grok Bot"], InstallNames = ["Grok Bot"] },
@@ -93,7 +95,7 @@ internal sealed class AppCatalog
             var match = inventory.FirstOrDefault(item => definition.InstallNames.Contains(item.Name, StringComparer.OrdinalIgnoreCase));
             return definition with { LaunchTarget = match?.Target };
         }).Concat(custom).Where(entry => !removed.Contains(entry.Key)
-            && (entry.Custom || entry.LaunchTarget is not null || open.Any(entry.Matches) || retained.Contains(entry.Key))).ToArray();
+            && (entry.BuiltIn || entry.Custom || entry.LaunchTarget is not null || open.Any(entry.Matches) || retained.Contains(entry.Key))).ToArray();
     }
     internal async Task<bool> Refresh(IEnumerable<string> attached, bool force = false)
     {

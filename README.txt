@@ -1,4 +1,31 @@
-AI Hub 0.7.4 — Windows desktop workspace
+AI Hub 0.8.0 — Windows desktop workspace
+
+0.8.0: Built-in GitHub Copilot
+Open Copilot in the sidebar. Install runtime downloads and verifies the official
+Windows Copilot executable. VS Code, Node.js and a separate terminal setup are
+not required. Choose Sign in, finish GitHub's browser login, choose a working
+folder, then Connect. Copilot account policies, model availability and usage
+limits still apply. AI Hub does not copy VS Code credentials or chats.
+
+Choose an advertised model, type a message and press Send or Ctrl+Enter.
+Responses and tool activity stream into the chat. Review file and command
+permission requests before choosing an option; Stop cancels the operation.
+Hiding the panel cancels a pending permission request. Changing projects stops
+the previous session before switching folders. Chats are saved per project and
+personal workspace; select a saved chat and Connect to resume. Deleting a project
+moves its Copilot chats to the personal workspace and retains the project name
+in their titles.
+
+The bottom strip reports Copilot session state and context-token usage when
+available. Context tokens are not remaining account credits. Copilot uses the
+full workspace; externally connected apps retain split view. Right-click the
+Copilot sidebar icon to remove it; Connect an AI can restore it.
+
+The native runtime is stored in %LOCALAPPDATA%\AIHub\runtime\copilot and local
+chat history in %LOCALAPPDATA%\AIHub\copilot-chats.json. Copilot owns its login
+credentials. Use Install runtime to fetch a newer verified release if needed.
+GitHub's ACP support is in preview. An interrupted or failed resume preserves
+the existing chat; connection failures never silently replace its session.
 
 0.7.4: Close connected AI windows on exit
 Closing AI Hub asks all connected AI windows to close, including inactive tabs
@@ -205,7 +232,7 @@ Preferences and alert identifiers are stored in usage-settings.json under
 
 Codex usage covers Codex, not ChatGPT or Dot. Grok usage covers CLI / Build,
 not Grok web chat. AI Hub uses existing local provider logins in memory to read
-usage. It does not save tokens, read chat history or manage subscriptions.
+usage. These usage readers do not save tokens, read chats or manage subscriptions.
 The separate AI Usage Widget is unchanged; close it when using AI Hub for
 monitoring to avoid duplicate provider requests. Provider API changes or expired
 logins can make individual readings unavailable without interrupting other apps.
@@ -299,7 +326,11 @@ filtering and browser reconnection are covered by additional deterministic
 checks. Split layout/focus and two-window recovery, scoped context persistence,
 exact handoff rendering, file-reference boundaries, local history retention
 and conservative estimates have additional checks. The package includes its
-complete validation report.
+complete validation report. Copilot checks cover verified runtime packages, ACP
+request routing and cancellation, permission handling, project chat persistence,
+replay recovery, archive failures, panel navigation and scaled control layout.
+An authenticated live Copilot check verifies model discovery and selection,
+one streamed response, and resuming that conversation in a new runtime process.
 Live verification covers the settings layout and Grok Bot zoom and reset.
 OpenAI shortcut behavior was inspected in the installed app's code; its UI
 was not automated. Native app updates may change their shortcut behavior.
@@ -308,3 +339,26 @@ Design references
 https://learn.chatgpt.com/docs/app
 https://cursor.com/docs/grok-bot
 https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos
+
+Copilot icon attribution
+GitHub Primer Octicons: https://github.com/primer/octicons
+MIT License
+Copyright (c) 2026 GitHub Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

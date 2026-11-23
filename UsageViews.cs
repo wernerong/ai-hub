@@ -107,6 +107,7 @@ internal sealed class UsageStrip : TableLayoutPanel
 {
     private readonly Dictionary<string, UsageChip> chips = [];
     private readonly Action open;
+    private Button? agentChip;
     internal UsageStrip(UsageProvider[] providers, Action open)
     {
         this.open = open; Dock = DockStyle.Bottom; Height = 56; BackColor = UsageStyle.Surface; Margin = Padding.Empty;
@@ -114,7 +115,7 @@ internal sealed class UsageStrip : TableLayoutPanel
     }
     internal void Configure(UsageProvider[] providers)
     {
-        if (chips.Keys.SequenceEqual(providers.Select(p => p.Id))) { Visible = providers.Length > 0; return; }
+        if (chips.Keys.SequenceEqual(providers.Select(p => p.Id))) { Visible = providers.Length > 0 || agentChip is not null; return; }
         SuspendLayout(); foreach (var chip in chips.Values) chip.Dispose(); chips.Clear(); ColumnStyles.Clear();
         ColumnCount = Math.Max(1, providers.Length);
         foreach (var provider in providers)
@@ -122,7 +123,27 @@ internal sealed class UsageStrip : TableLayoutPanel
             ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / providers.Length));
             var chip = new UsageChip(provider, open); chips.Add(provider.Id, chip); Controls.Add(chip, chips.Count - 1, 0);
         }
-        Visible = providers.Length > 0; ResumeLayout();
+        ArrangeChips(); ResumeLayout();
+    }
+    internal void SetAgentStatus(string? text, Action openAgent)
+    {
+        if (text is null) { if (agentChip is null) return; agentChip.Dispose(); agentChip = null; ArrangeChips(); return; }
+        if (agentChip is null)
+        {
+            agentChip = UsageStyle.Button(text, openAgent);
+            agentChip.Dock = DockStyle.Fill; agentChip.Margin = Padding.Empty; agentChip.AutoEllipsis = true;
+            agentChip.FlatAppearance.BorderSize = 0; Controls.Add(agentChip); ArrangeChips();
+        }
+        agentChip.Text = text; agentChip.AccessibleName = text;
+    }
+    private void ArrangeChips()
+    {
+        int count = chips.Count + (agentChip is null ? 0 : 1);
+        ColumnStyles.Clear(); ColumnCount = Math.Max(1, count);
+        for (int i = 0; i < count; i++) ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / count));
+        if (agentChip is not null) SetCellPosition(agentChip, new TableLayoutPanelCellPosition(chips.Count, 0));
+        RowCount = 1;
+        Visible = count > 0;
     }
     internal void Update(UsageState[] states) { foreach (var state in states) if (chips.TryGetValue(state.Id, out var chip)) chip.Update(state); }
 }

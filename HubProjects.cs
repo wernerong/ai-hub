@@ -100,30 +100,53 @@ internal sealed partial class HubForm
         if (busy || closing || modalOpen || openingProject) return;
         CancelStartupResume();
         RememberSession();
-        var previousIds = projects.Projects.Select(p => p.Id).ToArray();
+        string? previousProjectId = projects.ActiveProjectId;
+        var previousProjects = projects.Projects.ToArray();
         string? openId;
         SuspendForDialog();
         try
         {
             using var dialog = new WorkspaceDialog(projects, catalog.Available,
-                dock.Windows.Where(p => p.Value.Matches()).Select(p => p.Key).ToArray(), selected, CaptureLayout(), split);
+                dock.Windows.Where(p => p.Value.Matches()).Select(p => p.Key).Concat(selected == "copilot" ? ["copilot"] : Array.Empty<string>()).ToArray(), selected, CaptureLayout(), split);
             dialog.ShowDialog(this);
             openId = dialog.OpenProjectId;
         }
         finally { modalOpen = false; UpdateProjectBar(); }
         var cleanupErrors = new List<string>();
-        foreach (var removed in previousIds.Where(id => projects.Projects.All(p => p.Id != id)))
-            try { contextShelf.RemoveProject(removed); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-            { cleanupErrors.Add(ex.Message); }
+        openingProject = true;
+        try
+        {
+            if (projects.ActiveProjectId != previousProjectId && copilotPage is not null)
+            {
+                await SetCopilotWorkspace();
+                if (page == HubPage.Copilot) heading.Text = "Copilot   /   GitHub models · " + (ActiveProject?.Name ?? "Personal workspace");
+            }
+            foreach (var removed in previousProjects.Where(previous => projects.Projects.All(p => p.Id != previous.Id)))
+                try
+                {
+                    contextShelf.RemoveProject(removed.Id);
+                    if (copilotPage is not null) copilotPage.ArchiveWorkspace(removed.Id, removed.Name);
+                    else new CopilotChatStore(Path.Combine(Path.GetDirectoryName(usagePreferencesPath)!, "copilot-chats.json"))
+                        .ArchiveWorkspace(removed.Id, removed.Name);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+                { cleanupErrors.Add(ex.Message); }
+            if (copilotPage is not null) await SetCopilotWorkspace();
+        }
+        catch (Exception ex)
+        {
+            status.Text = "Could not finish switching Copilot workspaces: " + ex.Message + " Reopen Copilot to retry; saved chats are retained.";
+            return;
+        }
+        finally { openingProject = false; }
         if (openId is not null && projects.Projects.FirstOrDefault(p => p.Id == openId) is { } project) await OpenProject(project);
         else if (selected is not null && !pageOpen) QueueSelectedPresentation(true);
         else if (!pageOpen && split is null) ShowWelcome();
         if (cleanupErrors.Count > 0)
         {
             SuspendForDialog();
-            try { MessageBox.Show(this, "The project was deleted, but its saved context could not be removed from context-shelf.json.\n\n" + string.Join("\n", cleanupErrors),
-                "Could not remove project context", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+            try { MessageBox.Show(this, "The project was deleted, but some context could not be removed or its Copilot chats could not be moved to the personal workspace.\n\n" + string.Join("\n", cleanupErrors),
+                "Could not finish project cleanup", MessageBoxButtons.OK, MessageBoxIcon.Information); }
             finally { modalOpen = false; if (selected is not null && !pageOpen) QueueSelectedPresentation(true); }
         }
     }
@@ -135,6 +158,8 @@ internal sealed partial class HubForm
         var issues = new List<string>();
         try
         {
+            openingProject = true;
+            if (copilotPage is not null) await copilotPage.StopAsync();
             WorkspaceSessionSwitch.Begin(projects, project.Id, project.SelectedAppKey, project.Layout, project.Split, () =>
             {
                 openingProject = true; activation.Cancel(); focusPresentation = false;
@@ -142,6 +167,7 @@ internal sealed partial class HubForm
                 dock.RestoreAll(); appliedZoom.Clear(); selected = null; SetSplit(null);
             });
             if (restoreLayout) ApplyLayout(project.Layout);
+            await SetCopilotWorkspace();
             UpdateProjectBar();
             await RefreshDiscovery(true);
             foreach (var key in project.AppKeys.OrderBy(key => key == project.SelectedAppKey ? 1 : 0))
@@ -240,7 +266,7 @@ internal sealed partial class HubForm
         yield return new("refresh", "Refresh usage", "Request fresh provider readings", "quota monitor");
         yield return new("settings", "Open settings", "Updates, usage alerts and zoom", "preferences");
         yield return new("shortcut", "Change command shortcut", "Choose a global shortcut or disable it", "hotkey keyboard");
-        if (selected is not null) yield return new("pop", "Pop out selected AI", "Return the app to its original window", "detach");
+        if (selected is not null && dock.Has(selected)) yield return new("pop", "Pop out selected AI", "Return the app to its original window", "detach");
         if (dock.Windows.Count > 0) yield return new("restore", "Restore all AI windows", "Return connected apps to the desktop", "detach");
     }
 
@@ -263,11 +289,18 @@ internal sealed partial class HubForm
                 case "projects": await ShowProjects(); break;
                 case "personal":
                     RememberSession();
-                    WorkspaceSessionSwitch.Begin(projects, null, null, CaptureLayout(), null, () =>
+                    openingProject = true;
+                    try
                     {
-                        dock.RestoreAll(); appliedZoom.Clear(); selected = null; SetSplit(null);
-                    });
-                    UpdateProjectBar(); ShowWelcome(); break;
+                        if (copilotPage is not null) await copilotPage.StopAsync();
+                        WorkspaceSessionSwitch.Begin(projects, null, null, CaptureLayout(), null, () =>
+                        {
+                            dock.RestoreAll(); appliedZoom.Clear(); selected = null; SetSplit(null);
+                        });
+                        await SetCopilotWorkspace(); UpdateProjectBar(); ShowWelcome();
+                    }
+                    finally { openingProject = false; }
+                    break;
                 case "split": await ShowSplitOptions(); break;
                 case "context": await ShowContextShelf(); break;
                 case "history": ShowUsageHistory(); break;

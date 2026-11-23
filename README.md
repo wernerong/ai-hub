@@ -8,8 +8,8 @@ browser windows with **Connect an AI**, keeping their existing accounts and
 conversations. A dark, cyan HUD shows available usage monitors with remaining
 allowance rings, reset countdowns and amber warnings. Save projects with their
 AI apps, notes, links and window layout, then use the command palette to switch
-between projects and tools. Version 0.7.0 adds two-AI split view, a local context
-shelf for prepared handoffs, and usage history with clearly labeled estimates.
+between projects and tools. Use split view, a local context shelf for prepared
+handoffs, usage history, and built-in GitHub Copilot chat without VS Code.
 
 ## Run
 
@@ -33,6 +33,46 @@ Each app keeps its normal save prompts and close-to-tray behavior; processes
 are never force-terminated. **Pop out** releases one window, and **Restore all**
 releases all windows to stay open independently. Windows released by those actions,
 removing an AI or switching projects are no longer closed with the hub.
+
+## Built-in GitHub Copilot
+
+Select **Copilot** in the sidebar to chat and work on a local project directly
+inside AI Hub. VS Code is not required. **Install runtime** downloads the
+official native Windows x64 Copilot CLI from GitHub, verifies its SHA-256 digest
+and size, and installs it under `%LOCALAPPDATA%\AIHub\runtime\copilot`.
+No Node.js, administrator rights or separate terminal installation is needed.
+An existing native Copilot CLI can also be detected.
+
+Choose **Sign in** and finish Copilot's GitHub browser login. Credentials remain
+in Copilot's own credential store; AI Hub does not copy VS Code tokens. Select a
+**Working folder**, then **Connect**. The model selector shows the choices the
+connected agent advertises for your account. Your Copilot plan, CLI policies and
+usage limits apply; the available models can differ from VS Code.
+
+Send a message or press **Ctrl+Enter**. Responses and tool activity stream into
+the conversation. File edits and commands follow Copilot's permission requests,
+which AI Hub displays with the action details and explicit choices. **Stop**
+cancels the current operation. Hiding the panel cancels a pending approval;
+changing projects stops the previous session before switching folders.
+
+Chats are saved separately for each AI Hub project and the personal workspace
+in `%LOCALAPPDATA%\AIHub\copilot-chats.json`. A saved chat stays bound to its
+working folder. Select it and **Connect** to resume; a failed resume retains the
+saved transcript. Deleting a project moves its Copilot chats to the personal
+workspace, with the project name retained in each chat title. VS Code chats are
+not imported. Use the existing context shelf
+to copy selected notes or instructions into the input when needed.
+
+The bottom strip shows Copilot session status and context-token usage when the
+agent reports it. This is separate from your account allowance; AI Hub does not
+infer remaining credits from context tokens. Copilot currently uses the full
+workspace; split view remains available for externally connected app windows.
+Copilot can be removed and restored through the same sidebar controls as other AIs.
+
+AI Hub implements ACP v1 over local standard-input/output pipes. GitHub's ACP
+support is in preview; **Install runtime** can fetch a newer verified runtime
+when compatibility changes. Closing AI Hub cancels and disconnects its owned
+Copilot session while preserving history.
 
 ## Automatic updates
 

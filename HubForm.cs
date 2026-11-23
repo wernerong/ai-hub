@@ -44,7 +44,7 @@ internal sealed partial class HubForm : Form
     private readonly WorkspaceActivation activation = new();
     private TaskbarToggle? taskbar;
     private readonly bool isolated;
-    private enum HubPage { Workspace, Settings, Usage }
+    private enum HubPage { Workspace, Settings, Usage, Copilot }
     private HubPage page;
     private bool pageOpen => page != HubPage.Workspace;
     private bool navigationMenuOpen => navigation.Values.Any(button => button.ContextMenuStrip?.Visible == true);
@@ -215,10 +215,21 @@ internal sealed partial class HubForm : Form
             if (activation.TakeRequest(selected is not null && !pageOpen && Native.GetForegroundWindow() == Handle,
                 busy || modalOpen || openingProject || navigationMenuOpen || taskbar?.Pending == true || Control.MouseButtons != MouseButtons.None)) QueueSelectedPresentation(true);
         };
-        FormClosing += (_, e) =>
+        FormClosing += async (_, e) =>
         {
+            if (closing) { e.Cancel = true; return; }
             if (busy || openingProject || modalOpen) { restartForUpdate = false; e.Cancel = true; status.Text = "Wait for the current action to finish, then close the hub."; return; }
             RememberSession();
+            if (copilotPage is not null && !copilotShutdownReady)
+            {
+                e.Cancel = true; closing = true; timer.Stop();
+                try { await copilotPage.ShutdownAsync(); copilotShutdownReady = true; }
+                catch (Exception ex) { MessageBox.Show(this, "Could not finish saving Copilot: " + ex.Message, "AI Hub"); }
+                finally { closing = false; }
+                if (copilotShutdownReady) BeginInvoke((Action)Close);
+                else { restartForUpdate = false; timer.Start(); }
+                return;
+            }
             closing = true;
             timer.Stop();
             try
@@ -230,7 +241,7 @@ internal sealed partial class HubForm : Form
             }
             catch (Exception ex)
             {
-                restartForUpdate = false; closing = false; timer.Start(); e.Cancel = true;
+                restartForUpdate = false; copilotShutdownReady = false; closing = false; timer.Start(); e.Cancel = true;
                 MessageBox.Show("An app could not be released or asked to close. Try closing AI Hub again, or use Restore all to keep the apps open.\n\n" + ex.Message, "AI Hub");
             }
         };
@@ -244,6 +255,7 @@ internal sealed partial class HubForm : Form
             usageReaders.Dispose(); usageNotifications.Visible = false;
             usageNotifications.Icon?.Dispose(); usageNotifications.Dispose();
             dock.Dispose(); timer.Dispose(); navigationHints.Dispose(); emblem.Image?.Dispose(); Icon?.Dispose();
+            copilotPage?.Dispose();
         };
         // These controls are created in code, so the design DPI is supplied after
         // all children exist, not before Font changes trigger automatic layout.
@@ -325,7 +337,9 @@ internal sealed partial class HubForm : Form
     private void ClearContent()
     {
         usagePage = null;
-        foreach (Control control in empty.Controls.Cast<Control>().ToArray()) control.Dispose();
+        foreach (Control control in empty.Controls.Cast<Control>().ToArray())
+            if (ReferenceEquals(control, copilotPage)) { control.Visible = false; empty.Controls.Remove(control); }
+            else control.Dispose();
     }
 
     private void ShowSettings()
@@ -352,7 +366,7 @@ internal sealed partial class HubForm : Form
         {
             restartForUpdate = true;
             Close();
-        }, catalog.Available));
+        }, catalog.Available.Where(a => !a.BuiltIn).ToArray()));
         empty.Visible = true;
         heading.Text = "Settings   /   Updates, zoom, usage and alerts";
         detach.Enabled = false;
@@ -368,6 +382,7 @@ internal sealed partial class HubForm : Form
         busy = true;
         try
         {
+            if (entry.BuiltIn) { await ShowCopilot(); return; }
             status.Text = $"Connecting {entry.Name}…";
             if (!dock.Has(entry.Key))
             {
@@ -535,9 +550,10 @@ internal sealed partial class HubForm : Form
     {
         foreach (var (key, button) in navigation)
         {
-            button.BackColor = !pageOpen && selected == key ? Color.FromArgb(20, 49, 65) : Surface;
-            button.FlatAppearance.BorderSize = !pageOpen && selected == key ? 1 : 0;
-            button.FlatAppearance.BorderColor = !pageOpen && selected == key ? UsageStyle.Good : UsageStyle.Line;
+            bool active = selected == key && (!pageOpen || page == HubPage.Copilot && key == "copilot");
+            button.BackColor = active ? Color.FromArgb(20, 49, 65) : Surface;
+            button.FlatAppearance.BorderSize = active ? 1 : 0;
+            button.FlatAppearance.BorderColor = active ? UsageStyle.Good : UsageStyle.Line;
         }
         foreach (var (button, active) in new[] { (settingsButton, page == HubPage.Settings), (usageButton, page == HubPage.Usage) })
         {
@@ -585,6 +601,8 @@ internal sealed partial class HubForm : Form
     private void UpdateUsage()
     {
         var states = usage.States;
+        usageStrip.SetAgentStatus(copilotPage is not null && !catalog.IsRemoved("copilot") ? "Copilot · " + copilotPage.UsageSummary : null,
+            async () => await Select(AppEntry.All.Single(a => a.Key == "copilot")));
         usageStrip.Configure(EnabledMonitors);
         usagePage?.Configure(EnabledMonitors);
         usageStrip.Update(states);
@@ -708,6 +726,7 @@ internal sealed partial class HubForm : Form
         activation.Cancel(); focusPresentation = false; busy = true;
         try
         {
+            if (key == "copilot" && copilotPage is not null) { await copilotPage.ShutdownAsync(); if (page == HubPage.Copilot) ShowWelcome(); }
             dock.Detach(key); appliedZoom.Remove(key);
             LeaveSplitAfterRemoving(key);
             if (selected == key) { selected = null; detach.Enabled = false; }

@@ -136,7 +136,7 @@ internal sealed partial class HubForm
         SuspendForDialog();
         try
         {
-            using var dialog = new SplitViewDialog(catalog.Available, split, selected);
+            using var dialog = new SplitViewDialog(catalog.Available.Where(a => !a.BuiltIn).ToArray(), split, selected == "copilot" ? null : selected);
             if (dialog.ShowDialog(this) != DialogResult.OK) return;
             choice = dialog.Selection;
         }
@@ -144,6 +144,7 @@ internal sealed partial class HubForm
         if (choice is null)
         {
             SetSplit(null);
+            if (selected == "copilot") { await Select(AppEntry.All.Single(app => app.Key == "copilot")); return; }
             if (selected is not null) { page = HubPage.Workspace; empty.Visible = false; PresentWorkspace(true, true); }
             else ShowWelcome();
             UpdateWorkspaceHeading(); RememberSession(); return;
@@ -154,6 +155,7 @@ internal sealed partial class HubForm
     private async Task OpenSplit(WorkspaceSplit layout, bool automatic)
     {
         if (busy || openingProject || closing) return;
+        if (layout.Contains("copilot")) { status.Text = "Copilot uses its own full workspace. Choose two connected apps for split view."; return; }
         openingProject = true; activation.Cancel(); focusPresentation = false; dock.HideAll();
         var issues = new List<string>();
         try
